@@ -1,23 +1,23 @@
-<div class="mt-4 bg-gray-800 rounded-lg p-4 border border-gray-700">
+<div class="mt-5 border-2 border-zinc-700 bg-zinc-950 p-4">
     <div class="flex gap-4">
         <img
             src="{{ meta.thumbnail }}"
             alt="Thumbnail"
-            class="w-48 h-auto rounded-lg object-cover flex-shrink-0"
+            class="w-48 h-auto object-cover flex-shrink-0 border-2 border-zinc-600"
         >
         <div class="flex-1 min-w-0">
-            <h3 class="font-semibold text-lg text-white truncate">{{ meta.title }}</h3>
-            <p class="text-gray-400 text-sm mt-1">{{ meta.channel }}</p>
-            <p class="text-gray-500 text-sm mt-1">Duration: {{ meta.duration_str }}</p>
+            <h3 class="font-extrabold text-white text-sm uppercase leading-snug">{{ meta.title }}</h3>
+            <p class="text-zinc-500 text-xs mt-2 uppercase tracking-wider">{{ meta.channel }}</p>
+            <p class="text-electric text-xs mt-1 font-bold">{{ meta.duration_str }}</p>
         </div>
     </div>
     <form action="/api/jobs" method="POST" class="mt-4">
         <input type="hidden" name="url" value="{{ url }}">
         <button
             type="submit"
-            class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-lg transition-colors"
+            class="brutal-btn w-full bg-hot text-white font-extrabold py-3 uppercase tracking-wider text-sm"
         >
-            Summarize This Video
+            SUMMARIZE THIS &darr;
         </button>
     </form>
 </div>

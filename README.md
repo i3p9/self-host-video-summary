@@ -41,6 +41,9 @@ Copy `.env.example` to `.env` and adjust as needed:
 # View logs
 docker compose logs -f app
 
+# Update app after code changes (only rebuilds app, not Ollama)
+docker compose up -d --build app
+
 # Restart
 docker compose restart
 

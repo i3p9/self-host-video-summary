@@ -3,31 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Video Summarize{% endblock %}</title>
+    <title>{% block title %}VIDEO SUMMARIZE{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { mono: ['"JetBrains Mono"', '"Fira Code"', 'monospace'] },
+                    colors: {
+                        lime: { 400: '#a3e635', 500: '#84cc16' },
+                        hot: '#ff2d55',
+                        electric: '#00d4ff',
+                        yolk: '#ffe600',
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
     <style>
-        .prose h2 { font-size: 1.25rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.5rem; }
-        .prose h3 { font-size: 1.1rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.5rem; }
-        .prose ul { list-style-type: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
+        * { font-family: 'JetBrains Mono', monospace; }
+        .brutal-box { border: 3px solid #fff; box-shadow: 6px 6px 0px #fff; }
+        .brutal-box-lime { border: 3px solid #a3e635; box-shadow: 6px 6px 0px #a3e635; }
+        .brutal-box-hot { border: 3px solid #ff2d55; box-shadow: 6px 6px 0px #ff2d55; }
+        .brutal-box-electric { border: 3px solid #00d4ff; box-shadow: 6px 6px 0px #00d4ff; }
+        .brutal-box-yolk { border: 3px solid #ffe600; box-shadow: 6px 6px 0px #ffe600; }
+        .brutal-btn { border: 3px solid #000; box-shadow: 4px 4px 0px #000; transition: all 0.1s; }
+        .brutal-btn:hover { box-shadow: 2px 2px 0px #000; transform: translate(2px, 2px); }
+        .brutal-btn:active { box-shadow: 0px 0px 0px #000; transform: translate(4px, 4px); }
+        .brutal-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: 4px 4px 0px #000; }
+        .prose h2 { font-size: 1.2rem; font-weight: 800; margin-top: 1.5rem; margin-bottom: 0.5rem; color: #a3e635; text-transform: uppercase; }
+        .prose h3 { font-size: 1.05rem; font-weight: 700; margin-top: 1.25rem; margin-bottom: 0.5rem; color: #00d4ff; }
+        .prose ul { list-style-type: '> '; padding-left: 1.5rem; margin: 0.5rem 0; }
         .prose ol { list-style-type: decimal; padding-left: 1.5rem; margin: 0.5rem 0; }
-        .prose li { margin: 0.25rem 0; }
+        .prose li { margin: 0.35rem 0; }
         .prose p { margin: 0.5rem 0; }
-        .prose strong { font-weight: 700; }
+        .prose strong { font-weight: 800; color: #ffe600; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+        .blink { animation: blink 1s step-end infinite; }
+        @keyframes glitch {
+            0%, 100% { text-shadow: 2px 0 #ff2d55, -2px 0 #00d4ff; }
+            25% { text-shadow: -2px 0 #ff2d55, 2px 0 #00d4ff; }
+            50% { text-shadow: 2px 2px #ff2d55, -2px -2px #00d4ff; }
+            75% { text-shadow: -2px -1px #ff2d55, 2px 1px #00d4ff; }
+        }
+        .glitch:hover { animation: glitch 0.3s ease infinite; }
     </style>
 </head>
-<body class="h-full bg-gray-950 text-gray-100">
+<body class="h-full bg-black text-white">
     <div class="min-h-full">
-        <nav class="bg-gray-900 border-b border-gray-800">
-            <div class="max-w-4xl mx-auto px-4 py-4">
-                <a href="/" class="text-xl font-bold text-white hover:text-purple-400 transition-colors">
-                    Video Summarize
+        <nav class="border-b-4 border-white bg-black">
+            <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+                <a href="/" class="text-2xl font-extrabold tracking-tight glitch">
+                    <span class="text-lime-400">[</span>VIDEO<span class="text-hot">_</span>SUMMARIZE<span class="text-lime-400">]</span>
                 </a>
+                <span class="text-xs text-zinc-600 hidden sm:block">100% LOCAL</span>
             </div>
         </nav>
         <main class="max-w-4xl mx-auto px-4 py-8">
             {% block content %}{% endblock %}
         </main>
+        <footer class="border-t-2 border-zinc-800 mt-12">
+            <div class="max-w-4xl mx-auto px-4 py-4 text-xs text-zinc-700 text-center">
+                WHISPER + OLLAMA
+            </div>
+        </footer>
     </div>
     <script src="/static/app.js"></script>
     {% block scripts %}{% endblock %}

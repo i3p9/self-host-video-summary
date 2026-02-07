@@ -1,33 +1,82 @@
 {% extends "base.html" %}
 
-{% block title %}Result - Video Summarize{% endblock %}
+{% block title %}RESULT // VIDEO SUMMARIZE{% endblock %}
 
 {% block content %}
 <div class="max-w-3xl mx-auto">
     {% if job.metadata %}
-    <div class="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-6">
+    <div class="border-2 border-zinc-800 bg-zinc-950 p-4 mb-6">
         <div class="flex gap-4 items-center">
-            <img src="{{ job.metadata.thumbnail }}" alt="Thumbnail" class="w-24 h-auto rounded-lg">
-            <div>
-                <h2 class="font-semibold text-white">{{ job.metadata.title }}</h2>
-                <p class="text-gray-400 text-sm">{{ job.metadata.channel }} &middot; {{ job.metadata.duration_str }}</p>
+            <img src="{{ job.metadata.thumbnail }}" alt="" class="w-28 h-auto border-2 border-zinc-700 flex-shrink-0">
+            <div class="flex-1 min-w-0">
+                <h2 class="font-extrabold text-white text-sm uppercase leading-snug">{{ job.metadata.title }}</h2>
+                <p class="text-zinc-600 text-xs mt-1 uppercase tracking-wider">{{ job.metadata.channel }} // {{ job.metadata.duration_str }}</p>
             </div>
         </div>
     </div>
     {% endif %}
 
     {% if job.status.value == "failed" %}
-    <div class="bg-red-900/30 border border-red-700 rounded-xl p-6 mb-6">
-        <h2 class="text-xl font-bold text-red-400 mb-2">Processing Failed</h2>
-        <p class="text-red-300">{{ job.error }}</p>
-        <a href="/" class="inline-block mt-4 text-purple-400 hover:text-purple-300">&larr; Try another video</a>
+    <div class="brutal-box-hot bg-black p-6 mb-6">
+        <h2 class="text-xl font-extrabold text-hot uppercase mb-2">!! FAILED</h2>
+        <p class="text-zinc-400 text-sm">{{ job.error }}</p>
+        <a href="/" class="inline-block mt-4 text-hot font-bold text-sm uppercase hover:underline">&larr; TRY AGAIN</a>
     </div>
     {% else %}
 
+    <!-- Stats -->
+    <div class="flex flex-wrap gap-2 mb-6">
+        {% if job.total_time > 0 %}
+        <span class="bg-lime-400 text-black text-xs font-extrabold px-3 py-1.5 uppercase">
+            Total {{ "%.1f" | format(job.total_time) }}s
+        </span>
+        {% endif %}
+        {% if job.download_time > 0 %}
+        <span class="bg-zinc-900 border-2 border-zinc-700 text-zinc-400 text-xs font-bold px-3 py-1.5 uppercase">
+            DL {{ "%.1f" | format(job.download_time) }}s
+        </span>
+        {% endif %}
+        {% if job.transcribe_time > 0 %}
+        <span class="bg-zinc-900 border-2 border-zinc-700 text-zinc-400 text-xs font-bold px-3 py-1.5 uppercase">
+            STT {{ "%.1f" | format(job.transcribe_time) }}s
+        </span>
+        {% endif %}
+        {% if job.summarize_time > 0 %}
+        <span class="bg-zinc-900 border-2 border-zinc-700 text-zinc-400 text-xs font-bold px-3 py-1.5 uppercase">
+            LLM {{ "%.1f" | format(job.summarize_time) }}s
+        </span>
+        {% endif %}
+        {% if job.word_count > 0 %}
+        <span class="bg-zinc-900 border-2 border-zinc-700 text-electric text-xs font-bold px-3 py-1.5 uppercase">
+            {{ "{:,}".format(job.word_count) }} words
+        </span>
+        {% endif %}
+        {% if job.whisper_model %}
+        <span class="bg-zinc-900 border-2 border-zinc-700 text-yolk text-xs font-bold px-3 py-1.5 uppercase">
+            whisper:{{ job.whisper_model }}
+        </span>
+        {% endif %}
+        {% if job.summarizer_model %}
+        <span class="bg-zinc-900 border-2 border-zinc-700 text-hot text-xs font-bold px-3 py-1.5 uppercase">
+            {{ job.summarizer_model }}
+        </span>
+        {% endif %}
+        {% if job.created_by %}
+        <span class="bg-zinc-900 border-2 border-zinc-700 text-electric text-xs font-bold px-3 py-1.5 uppercase">
+            by {{ job.created_by }}
+        </span>
+        {% endif %}
+    </div>
+
     <!-- Summary -->
-    <div class="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
-        <h2 class="text-xl font-bold mb-4">Summary</h2>
-        <div class="prose text-gray-300 leading-relaxed" id="summary-content"></div>
+    <div class="brutal-box-lime bg-black p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-extrabold uppercase text-lime-400">// SUMMARY</h2>
+            <button onclick="copyToClipboard('summary-content', this)" class="brutal-btn bg-lime-400 text-black text-xs font-extrabold px-3 py-1.5 uppercase flex items-center gap-1.5">
+                <span>COPY</span>
+            </button>
+        </div>
+        <div class="prose text-zinc-300 leading-relaxed text-sm" id="summary-content"></div>
         <script>
             document.getElementById('summary-content').innerHTML =
                 marked.parse({{ job.summary | tojson }});
@@ -35,25 +84,28 @@
     </div>
 
     <!-- Transcript -->
-    <div class="bg-gray-900 rounded-xl border border-gray-800">
+    <div class="border-2 border-zinc-700 bg-black">
         <button
             onclick="toggleTranscript()"
-            class="w-full p-4 flex justify-between items-center text-left hover:bg-gray-800/50 rounded-xl transition-colors"
+            class="w-full p-4 flex justify-between items-center text-left hover:bg-zinc-950 transition-colors"
         >
-            <h2 class="text-xl font-bold">Transcript</h2>
-            <svg id="transcript-chevron" class="w-5 h-5 text-gray-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-            </svg>
+            <h2 class="text-lg font-extrabold uppercase text-zinc-500">// TRANSCRIPT</h2>
+            <span id="transcript-chevron" class="text-zinc-600 text-xl font-bold transition-transform">&darr;</span>
         </button>
         <div id="transcript-body" class="hidden px-6 pb-6">
-            {% if job.transcript_language %}
-            <p class="text-gray-500 text-sm mb-4">Detected language: {{ job.transcript_language }}</p>
-            {% endif %}
-            <div class="space-y-2">
+            <div class="flex items-center justify-between mb-4 border-b-2 border-zinc-800 pb-3">
+                <p class="text-zinc-600 text-xs uppercase tracking-wider">
+                    {% if job.transcript_language %}lang:{{ job.transcript_language }} // {% endif %}{{ "{:,}".format(job.word_count) }} words
+                </p>
+                <button onclick="copyToClipboard('transcript-text', this)" class="brutal-btn bg-zinc-800 text-zinc-400 text-xs font-extrabold px-3 py-1.5 uppercase flex items-center gap-1.5 hover:text-white">
+                    <span>COPY</span>
+                </button>
+            </div>
+            <div id="transcript-text" class="space-y-1.5">
                 {% for seg in job.transcript_segments %}
-                <div class="flex gap-3">
-                    <span class="text-purple-400 text-sm font-mono whitespace-nowrap pt-0.5">{{ seg.start_str }}</span>
-                    <p class="text-gray-300 text-sm">{{ seg.text }}</p>
+                <div class="flex gap-3 hover:bg-zinc-950 py-0.5">
+                    <span class="text-electric text-xs font-bold whitespace-nowrap pt-0.5 w-14">{{ seg.start_str }}</span>
+                    <p class="text-zinc-400 text-xs leading-relaxed">{{ seg.text }}</p>
                 </div>
                 {% endfor %}
             </div>
@@ -62,8 +114,8 @@
 
     {% endif %}
 
-    <div class="mt-6 text-center">
-        <a href="/" class="text-purple-400 hover:text-purple-300 transition-colors">&larr; Summarize another video</a>
+    <div class="mt-8 text-center">
+        <a href="/" class="text-zinc-600 hover:text-lime-400 font-bold text-sm uppercase tracking-wider transition-colors">&larr; BACK</a>
     </div>
 </div>
 {% endblock %}
@@ -73,8 +125,23 @@
 function toggleTranscript() {
     const body = document.getElementById('transcript-body');
     const chevron = document.getElementById('transcript-chevron');
-    body.classList.toggle('hidden');
-    chevron.classList.toggle('rotate-180');
+    const open = body.classList.toggle('hidden');
+    chevron.innerHTML = open ? '&darr;' : '&uarr;';
+}
+
+function copyToClipboard(elementId, btn) {
+    const el = document.getElementById(elementId);
+    const text = el.innerText || el.textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        const span = btn.querySelector('span');
+        const original = span.textContent;
+        span.textContent = 'COPIED!';
+        btn.classList.add('bg-electric', 'text-black');
+        setTimeout(() => {
+            span.textContent = original;
+            btn.classList.remove('bg-electric', 'text-black');
+        }, 1500);
+    });
 }
 </script>
 {% endblock %}

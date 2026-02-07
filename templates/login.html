@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}LOGIN // VIDEO SUMMARIZE{% endblock %}
+
+{% block content %}
+<div class="max-w-sm mx-auto mt-20">
+    <div class="brutal-box-lime bg-black p-6">
+        <h1 class="text-lg font-extrabold uppercase text-lime-400 mb-6">// ACCESS</h1>
+
+        {% if error %}
+        <div class="text-hot text-sm font-bold mb-4">!! WRONG PASSWORD</div>
+        {% endif %}
+
+        <form method="POST" action="/login" class="space-y-4">
+            <input
+                type="text"
+                name="username"
+                placeholder="name"
+                autofocus
+                required
+                class="w-full bg-zinc-900 border-2 border-zinc-700 px-4 py-3 text-lime-400 placeholder-zinc-600 font-mono focus:outline-none focus:border-lime-400 text-sm"
+            >
+            <input
+                type="password"
+                name="password"
+                placeholder="password"
+                required
+                class="w-full bg-zinc-900 border-2 border-zinc-700 px-4 py-3 text-lime-400 placeholder-zinc-600 font-mono focus:outline-none focus:border-lime-400 text-sm"
+            >
+            <button
+                type="submit"
+                class="brutal-btn w-full bg-lime-400 text-black font-extrabold py-3 uppercase tracking-wider text-sm"
+            >
+                ENTER &rarr;
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

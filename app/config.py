@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     whisper_compute_type: str = "int8"
     summarizer: str = "openrouter"  # "openrouter", "ollama", "claude", or "gemini"
     fallback_summarizer: str = "ollama"  # fallback if primary fails ("" to disable)
+    auth_password: str = ""  # set to enable password gate (leave empty to disable)
+    rate_limit: int = 10  # max requests per minute to expensive endpoints
     data_dir: str = "data"
     host: str = "0.0.0.0"
     port: int = 6999

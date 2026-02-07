@@ -1,6 +1,5 @@
 const STAGE_ORDER = ['downloading', 'transcribing', 'summarizing'];
 
-// Map backend statuses to their stage index (-1 = before stages, 3 = after stages)
 const STATUS_TO_STAGE = {
     'pending': -1,
     'fetching_metadata': -1,
@@ -32,7 +31,7 @@ function initSSE(jobId) {
         setTimeout(() => {
             if (evtSource.readyState === EventSource.CLOSED) {
                 const detail = document.getElementById('stage-detail');
-                if (detail) detail.textContent = 'Connection lost. Refreshing...';
+                if (detail) detail.textContent = '!! connection lost. refreshing...';
                 setTimeout(() => window.location.reload(), 2000);
             }
         }, 3000);
@@ -56,26 +55,20 @@ function updateProgress(data) {
         const iconEl = document.getElementById(`icon-${stage}`);
         if (!stageEl || !iconEl) return;
 
-        if (currentIdx === 3) {
-            // All stages completed
-            stageEl.className = 'flex items-center gap-3 text-green-400';
-            iconEl.className = 'w-6 h-6 rounded-full bg-green-600 flex items-center justify-center text-xs text-white';
-            iconEl.innerHTML = '&#10003;';
-        } else if (idx < currentIdx) {
-            // Completed stage
-            stageEl.className = 'flex items-center gap-3 text-green-400';
-            iconEl.className = 'w-6 h-6 rounded-full bg-green-600 flex items-center justify-center text-xs text-white';
-            iconEl.innerHTML = '&#10003;';
+        if (currentIdx === 3 || idx < currentIdx) {
+            // Completed
+            stageEl.className = 'flex items-center gap-3 text-lime-400';
+            iconEl.textContent = '\u2713';
         } else if (idx === currentIdx) {
-            // Current stage
-            stageEl.className = 'flex items-center gap-3 text-purple-400 font-medium';
-            iconEl.className = 'w-6 h-6 rounded-full border-2 border-purple-500 flex items-center justify-center text-xs animate-pulse';
-            iconEl.innerHTML = '';
+            // Active
+            stageEl.className = 'flex items-center gap-3 text-electric font-bold';
+            iconEl.textContent = '>';
+            iconEl.classList.add('blink');
         } else {
-            // Future stage
-            stageEl.className = 'flex items-center gap-3 text-gray-500';
-            iconEl.className = 'w-6 h-6 rounded-full border-2 border-gray-600 flex items-center justify-center text-xs';
-            iconEl.innerHTML = '';
+            // Pending
+            stageEl.className = 'flex items-center gap-3 text-zinc-600';
+            iconEl.textContent = '-';
+            iconEl.classList.remove('blink');
         }
     });
 }

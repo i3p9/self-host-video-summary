@@ -2,37 +2,69 @@
 
 {% block content %}
 <div class="max-w-2xl mx-auto">
-    <div class="text-center mb-8">
-        <h1 class="text-3xl font-bold mb-2">Summarize Any YouTube Video</h1>
-        <p class="text-gray-400">Paste a YouTube URL to get a transcript and AI-powered summary.</p>
-    </div>
+    <div id="status-bar" class="hidden mb-4 px-4 py-3 text-sm font-bold"></div>
 
-    <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
-        <form id="metadata-form" class="flex gap-3">
+    <div class="brutal-box-lime bg-black p-6 mb-6">
+        <form id="metadata-form" class="flex flex-col sm:flex-row gap-3">
             <input
                 type="url"
                 name="url"
                 id="url-input"
-                placeholder="https://www.youtube.com/watch?v=..."
+                placeholder="youtube.com/watch?v=..."
                 required
-                class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                class="flex-1 bg-zinc-900 border-2 border-zinc-700 px-4 py-3 text-lime-400 placeholder-zinc-600 font-mono focus:outline-none focus:border-lime-400 text-sm"
             >
             <button
                 type="submit"
                 id="fetch-btn"
-                class="bg-purple-600 hover:bg-purple-700 text-white font-medium px-6 py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="brutal-btn bg-lime-400 text-black font-extrabold px-6 py-3 uppercase tracking-wider text-sm"
             >
-                Fetch Info
+                FETCH &rarr;
             </button>
         </form>
 
         <div id="metadata-area" class="mt-4"></div>
     </div>
+
+    {% if history %}
+    <div class="mt-10">
+        <h2 class="text-xs uppercase tracking-[0.3em] text-zinc-500 mb-4 border-b-2 border-zinc-800 pb-2">// HISTORY</h2>
+        <div class="space-y-2">
+            {% for item in history %}
+            <a href="/result/{{ item.id }}" class="flex gap-4 items-center bg-black border-2 border-zinc-800 p-3 hover:border-lime-400 transition-colors group">
+                {% if item.thumbnail %}
+                <img src="{{ item.thumbnail }}" alt="" class="w-20 h-14 object-cover flex-shrink-0 grayscale group-hover:grayscale-0 transition-all">
+                {% endif %}
+                <div class="flex-1 min-w-0">
+                    <p class="text-white font-bold text-sm truncate group-hover:text-lime-400 transition-colors">{{ item.title }}</p>
+                    <p class="text-zinc-600 text-xs mt-0.5">{{ item.channel }}{% if item.duration %} // {{ (item.duration // 60) }}m{{ "%02d" | format(item.duration % 60) }}s{% endif %}{% if item.created_by %} // <span class="text-zinc-500">{{ item.created_by }}</span>{% endif %}</p>
+                </div>
+                <span class="text-zinc-700 group-hover:text-lime-400 text-lg">&rarr;</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+(async () => {
+    const bar = document.getElementById('status-bar');
+    try {
+        const resp = await fetch('/api/status');
+        const data = await resp.json();
+        if (!data.ok) {
+            bar.textContent = '!! ' + data.error;
+            bar.className = 'mb-4 px-4 py-3 text-sm font-bold brutal-box-hot bg-black text-hot';
+        }
+    } catch {
+        bar.textContent = '!! Could not check summarizer status.';
+        bar.className = 'mb-4 px-4 py-3 text-sm font-bold brutal-box-yolk bg-black text-yolk';
+    }
+})();
+
 document.getElementById('metadata-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const url = document.getElementById('url-input').value.trim();
@@ -42,8 +74,8 @@ document.getElementById('metadata-form').addEventListener('submit', async (e) =>
     const area = document.getElementById('metadata-area');
 
     btn.disabled = true;
-    btn.textContent = 'Fetching...';
-    area.innerHTML = '<div class="text-gray-400 text-sm">Loading video info...</div>';
+    btn.textContent = 'FETCHING...';
+    area.innerHTML = '<div class="text-zinc-500 text-sm mt-2"><span class="blink">_</span></div>';
 
     try {
         const formData = new FormData();
@@ -51,10 +83,10 @@ document.getElementById('metadata-form').addEventListener('submit', async (e) =>
         const resp = await fetch('/api/metadata', { method: 'POST', body: formData });
         area.innerHTML = await resp.text();
     } catch (err) {
-        area.innerHTML = '<div class="text-red-400 text-sm mt-2">Network error. Please try again.</div>';
+        area.innerHTML = '<div class="text-hot text-sm mt-2 font-bold">!! NETWORK ERROR. TRY AGAIN.</div>';
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Fetch Info';
+        btn.textContent = 'FETCH \u2192';
     }
 });
 </script>

@@ -1,11 +1,13 @@
 import asyncio
 import logging
 import os
+import time
 
 from app.config import settings
 from app.models import Job, JobStatus
 from app.services import youtube, transcriber
 from app.services.summarizer import get_summarizer
+from app import storage
 
 logger = logging.getLogger(__name__)
 
@@ -19,25 +21,30 @@ async def process_job(job: Job) -> None:
         job.progress = 0
         job.stage_detail = "Downloading audio..."
 
+        t0 = time.monotonic()
         output_dir = os.path.join(settings.data_dir, job.id)
         audio_path = await asyncio.to_thread(
             youtube.download_audio, job.url, output_dir
         )
+        job.download_time = time.monotonic() - t0
         job.progress = 100
         job.stage_detail = "Download complete"
 
         # Stage 2: Transcribe
         job.status = JobStatus.TRANSCRIBING
         job.progress = 0
+        job.whisper_model = settings.whisper_model
         job.stage_detail = "Loading transcription model..."
 
         def on_progress(done: int, total: int) -> None:
             job.progress = min(int(done / total * 100), 99)
             job.stage_detail = f"Transcribing... ({done} segments)"
 
+        t0 = time.monotonic()
         result = await asyncio.to_thread(
             transcriber.transcribe, audio_path, on_progress
         )
+        job.transcribe_time = time.monotonic() - t0
         job.transcript_text = result.text
         job.transcript_segments = result.segments
         job.transcript_language = result.language
@@ -48,7 +55,6 @@ async def process_job(job: Job) -> None:
         try:
             os.remove(audio_path)
             audio_path = None
-            # Remove the job directory if empty
             job_dir = os.path.join(settings.data_dir, job.id)
             if os.path.isdir(job_dir) and not os.listdir(job_dir):
                 os.rmdir(job_dir)
@@ -61,15 +67,25 @@ async def process_job(job: Job) -> None:
         job.stage_detail = "Generating summary..."
 
         summarizer = get_summarizer()
+        # Record which model actually ran
+        actual = getattr(summarizer, "fallback", None) or summarizer
+        if hasattr(actual, "model"):
+            job.summarizer_model = actual.model
+        else:
+            job.summarizer_model = settings.summarizer
+
         title = job.metadata.title if job.metadata else "Unknown"
+        t0 = time.monotonic()
         job.summary = await asyncio.to_thread(
             summarizer.summarize, job.transcript_text, title
         )
+        job.summarize_time = time.monotonic() - t0
         job.progress = 100
         job.stage_detail = "Summary complete"
 
-        # Done
+        # Done — persist to database
         job.status = JobStatus.COMPLETED
+        await asyncio.to_thread(storage.save_job, job)
 
     except Exception as e:
         logger.exception("Job %s failed", job.id)

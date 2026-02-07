@@ -3,6 +3,8 @@ services:
     build: .
     ports:
       - "6999:6999"
+    volumes:
+      - app_data:/app/data
     environment:
       - SUMMARIZER=ollama
       - OLLAMA_BASE_URL=http://ollama:11434
@@ -22,4 +24,5 @@ services:
     restart: unless-stopped
 
 volumes:
+  app_data:
   ollama_data:
