@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Result - Video Summarize{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    {% if job.metadata %}
+    <div class="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-6">
+        <div class="flex gap-4 items-center">
+            <img src="{{ job.metadata.thumbnail }}" alt="Thumbnail" class="w-24 h-auto rounded-lg">
+            <div>
+                <h2 class="font-semibold text-white">{{ job.metadata.title }}</h2>
+                <p class="text-gray-400 text-sm">{{ job.metadata.channel }} &middot; {{ job.metadata.duration_str }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if job.status.value == "failed" %}
+    <div class="bg-red-900/30 border border-red-700 rounded-xl p-6 mb-6">
+        <h2 class="text-xl font-bold text-red-400 mb-2">Processing Failed</h2>
+        <p class="text-red-300">{{ job.error }}</p>
+        <a href="/" class="inline-block mt-4 text-purple-400 hover:text-purple-300">&larr; Try another video</a>
+    </div>
+    {% else %}
+
+    <!-- Summary -->
+    <div class="bg-gray-900 rounded-xl p-6 border border-gray-800 mb-6">
+        <h2 class="text-xl font-bold mb-4">Summary</h2>
+        <div class="prose text-gray-300 leading-relaxed" id="summary-content"></div>
+        <script>
+            document.getElementById('summary-content').innerHTML =
+                marked.parse({{ job.summary | tojson }});
+        </script>
+    </div>
+
+    <!-- Transcript -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800">
+        <button
+            onclick="toggleTranscript()"
+            class="w-full p-4 flex justify-between items-center text-left hover:bg-gray-800/50 rounded-xl transition-colors"
+        >
+            <h2 class="text-xl font-bold">Transcript</h2>
+            <svg id="transcript-chevron" class="w-5 h-5 text-gray-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+        </button>
+        <div id="transcript-body" class="hidden px-6 pb-6">
+            {% if job.transcript_language %}
+            <p class="text-gray-500 text-sm mb-4">Detected language: {{ job.transcript_language }}</p>
+            {% endif %}
+            <div class="space-y-2">
+                {% for seg in job.transcript_segments %}
+                <div class="flex gap-3">
+                    <span class="text-purple-400 text-sm font-mono whitespace-nowrap pt-0.5">{{ seg.start_str }}</span>
+                    <p class="text-gray-300 text-sm">{{ seg.text }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    {% endif %}
+
+    <div class="mt-6 text-center">
+        <a href="/" class="text-purple-400 hover:text-purple-300 transition-colors">&larr; Summarize another video</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleTranscript() {
+    const body = document.getElementById('transcript-body');
+    const chevron = document.getElementById('transcript-chevron');
+    body.classList.toggle('hidden');
+    chevron.classList.toggle('rotate-180');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip3:*)",
+      "Bash(node --version:*)",
+      "Bash(npm --version:*)",
+      "Bash(sysctl:*)",
+      "Bash(yt-dlp:*)",
+      "Bash(ffmpeg:*)",
+      "WebSearch",
+      "Bash(python -c:*)",
+      "Bash(pip install:*)"
+    ]
+  }
+}

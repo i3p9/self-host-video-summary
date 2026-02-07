@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold mb-2">Summarize Any YouTube Video</h1>
+        <p class="text-gray-400">Paste a YouTube URL to get a transcript and AI-powered summary.</p>
+    </div>
+
+    <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+        <form id="metadata-form" class="flex gap-3">
+            <input
+                type="url"
+                name="url"
+                id="url-input"
+                placeholder="https://www.youtube.com/watch?v=..."
+                required
+                class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            >
+            <button
+                type="submit"
+                id="fetch-btn"
+                class="bg-purple-600 hover:bg-purple-700 text-white font-medium px-6 py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                Fetch Info
+            </button>
+        </form>
+
+        <div id="metadata-area" class="mt-4"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('metadata-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = document.getElementById('url-input').value.trim();
+    if (!url) return;
+
+    const btn = document.getElementById('fetch-btn');
+    const area = document.getElementById('metadata-area');
+
+    btn.disabled = true;
+    btn.textContent = 'Fetching...';
+    area.innerHTML = '<div class="text-gray-400 text-sm">Loading video info...</div>';
+
+    try {
+        const formData = new FormData();
+        formData.append('url', url);
+        const resp = await fetch('/api/metadata', { method: 'POST', body: formData });
+        area.innerHTML = await resp.text();
+    } catch (err) {
+        area.innerHTML = '<div class="text-red-400 text-sm mt-2">Network error. Please try again.</div>';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Fetch Info';
+    }
+});
+</script>
+{% endblock %}

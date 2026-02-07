@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+yt-dlp
+faster-whisper
+anthropic
+google-generativeai
+python-dotenv
+pydantic-settings
+aiofiles

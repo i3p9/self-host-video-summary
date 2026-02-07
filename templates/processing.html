@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Processing - Video Summarize{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    {% if job.metadata %}
+    <div class="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-6">
+        <div class="flex gap-4 items-center">
+            <img src="{{ job.metadata.thumbnail }}" alt="Thumbnail" class="w-24 h-auto rounded-lg">
+            <div>
+                <h2 class="font-semibold text-white">{{ job.metadata.title }}</h2>
+                <p class="text-gray-400 text-sm">{{ job.metadata.channel }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="bg-gray-900 rounded-xl p-6 border border-gray-800">
+        <h2 class="text-xl font-bold mb-4">Processing Video</h2>
+
+        <div class="space-y-4">
+            <!-- Stage indicators -->
+            <div id="stages" class="space-y-3">
+                <div id="stage-downloading" class="flex items-center gap-3 text-gray-500">
+                    <div class="w-6 h-6 rounded-full border-2 border-gray-600 flex items-center justify-center text-xs" id="icon-downloading"></div>
+                    <span>Downloading audio</span>
+                </div>
+                <div id="stage-transcribing" class="flex items-center gap-3 text-gray-500">
+                    <div class="w-6 h-6 rounded-full border-2 border-gray-600 flex items-center justify-center text-xs" id="icon-transcribing"></div>
+                    <span>Transcribing audio</span>
+                </div>
+                <div id="stage-summarizing" class="flex items-center gap-3 text-gray-500">
+                    <div class="w-6 h-6 rounded-full border-2 border-gray-600 flex items-center justify-center text-xs" id="icon-summarizing"></div>
+                    <span>Generating summary</span>
+                </div>
+            </div>
+
+            <!-- Progress bar -->
+            <div class="mt-4">
+                <div class="flex justify-between text-sm text-gray-400 mb-1">
+                    <span id="stage-detail">Starting...</span>
+                    <span id="progress-pct">0%</span>
+                </div>
+                <div class="w-full bg-gray-700 rounded-full h-3">
+                    <div id="progress-bar" class="bg-purple-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    initSSE('{{ job.id }}');
+</script>
+{% endblock %}
