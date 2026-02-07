@@ -155,7 +155,12 @@ async def login_submit(request: Request, username: str = Form(...), password: st
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     history = await asyncio.to_thread(storage.list_jobs)
-    return templates.TemplateResponse("index.html", {"request": request, "history": history})
+    # Find any active (in-progress) jobs
+    active = [
+        j for j in jobs.values()
+        if j.status not in (JobStatus.COMPLETED, JobStatus.FAILED)
+    ]
+    return templates.TemplateResponse("index.html", {"request": request, "history": history, "active": active})
 
 
 @app.get("/api/status")

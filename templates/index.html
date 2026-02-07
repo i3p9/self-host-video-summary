@@ -4,6 +4,21 @@
 <div class="max-w-2xl mx-auto">
     <div id="status-bar" class="hidden mb-4 px-4 py-3 text-sm font-bold"></div>
 
+    {% if active %}
+    <div class="mb-6">
+        {% for job in active %}
+        <a href="/processing/{{ job.id }}" class="flex items-center gap-3 brutal-box-electric bg-black p-4 mb-3 hover:bg-zinc-950 transition-colors">
+            <span class="text-electric blink text-lg">&gt;</span>
+            <div class="flex-1 min-w-0">
+                <p class="text-white font-bold text-sm truncate">{{ job.metadata.title if job.metadata else "Processing..." }}</p>
+                <p class="text-zinc-500 text-xs uppercase">{{ job.status.value }} // {{ job.progress }}%</p>
+            </div>
+            <span class="text-electric text-sm">&rarr;</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="brutal-box-lime bg-black p-6 mb-6">
         <form id="metadata-form" class="flex flex-col sm:flex-row gap-3">
             <input
