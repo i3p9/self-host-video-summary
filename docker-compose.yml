@@ -1,0 +1,25 @@
+services:
+  app:
+    build: .
+    ports:
+      - "6999:6999"
+    environment:
+      - SUMMARIZER=ollama
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=gemma3:4b
+      - WHISPER_MODEL=base
+      - FALLBACK_SUMMARIZER=
+    env_file:
+      - .env
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
