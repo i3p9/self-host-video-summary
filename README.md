@@ -1,6 +1,6 @@
 # Video Summarize
 
-Self-hosted web app that transcribes YouTube audio locally with Whisper and summarizes it with OpenRouter by default. Ollama remains available as an optional local backend.
+Self-hosted web app that transcribes YouTube audio locally with Whisper and summarizes it with DeepSeek by default. OpenRouter and Ollama remain available as alternate backends.
 
 ## Quick Start
 
@@ -17,12 +17,19 @@ App runs at `http://localhost:6999`
 Set at least this in `.env` before starting:
 
 ```bash
-OPENROUTER_API_KEY=your-key-here
-SUMMARIZER=openrouter
-OPENROUTER_MODEL=moonshotai/kimi-k2.6:free
+DEEPSEEK_API_KEY=your-key-here
+SUMMARIZER=deepseek
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_THINKING=false
 ```
 
 For a `4GB` VM, `WHISPER_MODEL=small` is the default target. If memory is tighter than expected, drop to `base` or `tiny`.
+
+Completed summaries are persisted to SQLite, Whisper model downloads are cached, and transcripts are now cached by YouTube `video_id + whisper_model`. If a summary attempt fails after transcription, rerunning the same video can skip download/transcription and go straight to the LLM stage.
+
+If the same video was already summarized with the same summarizer configuration, the app reuses the existing completed result instead of creating a duplicate job.
+
+OpenRouter free models can still be used, but they can hit rate limits. This app retries `429` and some `5xx` responses automatically, and it can fail over to additional OpenRouter models if you set `OPENROUTER_FALLBACK_MODELS`.
 
 If YouTube starts returning `Sign in to confirm you're not a bot`, provide a `cookies.txt` file to `yt-dlp`. This app supports that through `YOUTUBE_COOKIE_FILE`.
 
@@ -35,8 +42,9 @@ This repo is ready for a single-user or small shared deployment if you run one a
 3. Copy `.env.example` to `.env` and set at least:
 
 ```bash
-OPENROUTER_API_KEY=your-key-here
-OPENROUTER_MODEL=moonshotai/kimi-k2.6:free
+DEEPSEEK_API_KEY=your-key-here
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_THINKING=false
 WHISPER_MODEL=small
 YOUTUBE_COOKIE_FILE=/app/secrets/youtube-cookies.txt
 AUTH_PASSWORD=use-a-long-random-password
@@ -112,19 +120,25 @@ Copy `.env.example` to `.env` and adjust as needed.
 
 | Variable | Default | Description |
 |---|---|---|
-| `SUMMARIZER` | `openrouter` | `openrouter`, `ollama`, `claude`, or `gemini` |
+| `SUMMARIZER` | `deepseek` | `deepseek`, `openrouter`, `ollama`, `claude`, or `gemini` |
+| `DEEPSEEK_API_KEY` | | Required if using DeepSeek |
+| `DEEPSEEK_MODEL` | `deepseek-v4-flash` | DeepSeek model ID |
+| `DEEPSEEK_THINKING` | `false` | Set to `true` to enable DeepSeek thinking mode |
 | `OPENROUTER_API_KEY` | | Required if using OpenRouter |
 | `OPENROUTER_MODEL` | `moonshotai/kimi-k2.6:free` | Any OpenRouter model ID |
+| `OPENROUTER_FALLBACK_MODELS` | _(empty)_ | Comma-separated OpenRouter model IDs to try if the primary model fails |
+| `OPENROUTER_MAX_RETRIES` | `3` | Automatic retries for `429` and transient `5xx` responses |
+| `OPENROUTER_RETRY_BASE_SECONDS` | `2` | Base delay for exponential backoff when retrying OpenRouter |
 | `OLLAMA_MODEL` | `gemma3:4b` | Any model available in Ollama |
 | `WHISPER_MODEL` | `small` | Whisper model size (`tiny`, `base`, `small`, `medium`) |
 | `YOUTUBE_COOKIE_FILE` | _(empty)_ | Path inside the container to a `cookies.txt` file for `yt-dlp` |
-| `FALLBACK_SUMMARIZER` | _(empty)_ | Fallback if primary fails (e.g. `ollama`) |
+| `FALLBACK_SUMMARIZER` | _(empty)_ | Fallback provider if the primary summarizer fails (for example `openrouter`) |
 | `AUTH_PASSWORD` | _(empty)_ | Password gate for the web UI; set this before exposing the app |
 | `COOKIE_SECURE` | `false` | Set to `true` when serving the app over HTTPS |
 | `ANTHROPIC_MODEL` | `claude-sonnet-4-5-20250929` | Claude model when `SUMMARIZER=claude` |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model when `SUMMARIZER=gemini` |
 
-Using OpenRouter means model switching is just a config change. If you want a different provider later, set `OPENROUTER_MODEL` to that model's OpenRouter ID and restart the app.
+Using DeepSeek means you can run a paid remote summarizer without local LLM RAM pressure. If you want the app to automatically try more than one OpenRouter model instead, keep your preferred model in `OPENROUTER_MODEL`, put alternates in `OPENROUTER_FALLBACK_MODELS`, and restart the app.
 
 `BIND_HOST` and `HOST_PORT` control the Docker port mapping. The default is `127.0.0.1:6999`, which is the safer choice for reverse-proxy deployments.
 
@@ -151,7 +165,9 @@ OLLAMA_MODEL=gemma3:4b
 2. Paste a YouTube URL, click **Fetch Info**
 3. Review video details, click **Summarize This Video**
 4. Wait for download → transcription → summary
-5. View the summary and full timestamped transcript
+5. If the transcript for that video and Whisper model was already cached, the app skips directly to summary
+6. If the exact same video was already summarized with the same summarizer config, the app reuses the existing result
+7. View the summary and full timestamped transcript
 
 ## Managing
 
@@ -168,8 +184,11 @@ docker compose restart
 # Stop
 docker compose down
 
-# Switch OpenRouter model
-# Edit OPENROUTER_MODEL in .env and restart app
+# Switch DeepSeek model
+# Edit DEEPSEEK_MODEL or DEEPSEEK_THINKING in .env and restart app
+
+# Add automatic OpenRouter model failover
+# Set OPENROUTER_FALLBACK_MODELS=model-a,model-b in .env and restart app
 
 # Switch Ollama model
 docker compose --profile local-llm exec ollama ollama pull qwen3:4b

@@ -6,6 +6,7 @@ import logging
 import shutil
 import subprocess
 import tempfile
+from urllib.parse import parse_qs, urlparse
 
 import yt_dlp
 from yt_dlp.utils import DownloadError
@@ -36,6 +37,35 @@ class VideoMetadata:
 _URL_PATTERN = re.compile(
     r"^(https?://)?(www\.)?(youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)[\w-]+"
 )
+
+
+def extract_video_id(url: str) -> str | None:
+    if not url:
+        return None
+
+    normalized = url if "://" in url else f"https://{url}"
+    parsed = urlparse(normalized)
+    host = parsed.netloc.lower()
+    path = parsed.path.strip("/")
+
+    if host.endswith("youtu.be"):
+        return path.split("/", 1)[0] or None
+
+    if host.endswith("youtube.com") or host.endswith("www.youtube.com"):
+        if path == "watch":
+            return parse_qs(parsed.query).get("v", [None])[0]
+        if path.startswith("shorts/"):
+            parts = path.split("/")
+            if len(parts) >= 2:
+                return parts[1] or None
+
+    match = re.search(
+        r"(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([\w-]+)",
+        url,
+    )
+    if match:
+        return match.group(1)
+    return None
 
 
 def validate_url(url: str) -> bool:

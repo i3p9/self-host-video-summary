@@ -6,7 +6,7 @@ import time
 from app.config import settings
 from app.models import Job, JobStatus
 from app.services import youtube, transcriber
-from app.services.summarizer import get_summarizer
+from app.services.summarizer import format_summarizer_label, get_summarizer
 from app import storage
 
 logger = logging.getLogger(__name__)
@@ -16,50 +16,58 @@ async def process_job(job: Job) -> None:
     """Run the full pipeline: download → transcribe → summarize."""
     audio_path = None
     try:
-        # Stage 1: Download audio
-        job.status = JobStatus.DOWNLOADING
-        job.progress = 0
-        job.stage_detail = "Downloading audio..."
+        if job.transcript_text and job.transcript_segments:
+            job.status = JobStatus.TRANSCRIBING
+            job.progress = 100
+            job.whisper_model = job.whisper_model or settings.whisper_model
+            job.stage_detail = "Using cached transcript"
+        else:
+            # Stage 1: Download audio
+            job.status = JobStatus.DOWNLOADING
+            job.progress = 0
+            job.stage_detail = "Downloading audio..."
 
-        t0 = time.monotonic()
-        output_dir = os.path.join(settings.data_dir, job.id)
-        audio_path = await asyncio.to_thread(
-            youtube.download_audio, job.url, output_dir
-        )
-        job.download_time = time.monotonic() - t0
-        job.progress = 100
-        job.stage_detail = "Download complete"
+            t0 = time.monotonic()
+            output_dir = os.path.join(settings.data_dir, job.id)
+            audio_path = await asyncio.to_thread(
+                youtube.download_audio, job.url, output_dir
+            )
+            job.download_time = time.monotonic() - t0
+            job.progress = 100
+            job.stage_detail = "Download complete"
 
-        # Stage 2: Transcribe
-        job.status = JobStatus.TRANSCRIBING
-        job.progress = 0
-        job.whisper_model = settings.whisper_model
-        job.stage_detail = "Loading transcription model..."
+            # Stage 2: Transcribe
+            job.status = JobStatus.TRANSCRIBING
+            job.progress = 0
+            job.whisper_model = settings.whisper_model
+            job.stage_detail = "Loading transcription model..."
 
-        def on_progress(done: int, total: int) -> None:
-            job.progress = min(int(done / total * 100), 99)
-            job.stage_detail = f"Transcribing... ({done} segments)"
+            def on_progress(done: int, total: int) -> None:
+                job.progress = min(int(done / total * 100), 99)
+                job.stage_detail = f"Transcribing... ({done} segments)"
 
-        t0 = time.monotonic()
-        result = await asyncio.to_thread(
-            transcriber.transcribe, audio_path, on_progress
-        )
-        job.transcribe_time = time.monotonic() - t0
-        job.transcript_text = result.text
-        job.transcript_segments = result.segments
-        job.transcript_language = result.language
-        job.progress = 100
-        job.stage_detail = "Transcription complete"
+            t0 = time.monotonic()
+            result = await asyncio.to_thread(
+                transcriber.transcribe, audio_path, on_progress
+            )
+            job.transcribe_time = time.monotonic() - t0
+            job.transcript_text = result.text
+            job.transcript_segments = result.segments
+            job.transcript_language = result.language
+            job.progress = 100
+            job.stage_detail = "Transcription complete"
 
-        # Clean up audio file
-        try:
-            os.remove(audio_path)
-            audio_path = None
-            job_dir = os.path.join(settings.data_dir, job.id)
-            if os.path.isdir(job_dir) and not os.listdir(job_dir):
-                os.rmdir(job_dir)
-        except OSError:
-            pass
+            await asyncio.to_thread(storage.save_transcript_cache, job)
+
+            # Clean up audio file
+            try:
+                os.remove(audio_path)
+                audio_path = None
+                job_dir = os.path.join(settings.data_dir, job.id)
+                if os.path.isdir(job_dir) and not os.listdir(job_dir):
+                    os.rmdir(job_dir)
+            except OSError:
+                pass
 
         # Stage 3: Summarize
         job.status = JobStatus.SUMMARIZING
@@ -73,7 +81,11 @@ async def process_job(job: Job) -> None:
             summarizer.summarize, job.transcript_text, title
         )
         job.summarize_time = time.monotonic() - t0
-        job.summarizer_model = getattr(summarizer, "model", "") or settings.summarizer
+        job.summarizer_model = format_summarizer_label(
+            getattr(summarizer, "provider", settings.summarizer),
+            getattr(summarizer, "model", "") or settings.summarizer,
+            getattr(summarizer, "thinking_enabled", None),
+        )
         job.progress = 100
         job.stage_detail = "Summary complete"
 

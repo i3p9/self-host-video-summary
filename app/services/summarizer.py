@@ -1,4 +1,5 @@
 import logging
+import time
 from abc import ABC, abstractmethod
 
 import anthropic
@@ -51,6 +52,51 @@ def _extract_chat_completion_text(payload: dict) -> str:
     raise ValueError("Chat completion response did not contain text content")
 
 
+def _parse_retry_after(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        return max(float(value), 0.0)
+    except ValueError:
+        return None
+
+
+def _parse_model_list(value: str) -> list[str]:
+    models: list[str] = []
+    for raw_model in value.split(","):
+        model = raw_model.strip()
+        if model and model not in models:
+            models.append(model)
+    return models
+
+
+def _extract_error_detail(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return ""
+
+    if not isinstance(payload, dict):
+        return ""
+
+    error = payload.get("error")
+    if isinstance(error, str):
+        return error.strip()
+    if not isinstance(error, dict):
+        return ""
+
+    parts: list[str] = []
+    message = error.get("message")
+    if isinstance(message, str) and message.strip():
+        parts.append(message.strip())
+
+    code = error.get("code")
+    if isinstance(code, str) and code.strip():
+        parts.append(f"code={code.strip()}")
+
+    return " | ".join(parts)
+
+
 class Summarizer(ABC):
     provider: str = ""
     model: str = ""
@@ -70,36 +116,113 @@ class ChatCompletionsSummarizer(Summarizer):
         timeout: float,
         api_key: str = "",
         headers: dict[str, str] | None = None,
+        extra_body: dict | None = None,
+        max_retries: int = 0,
+        retry_base_seconds: float = 1.0,
     ):
         self.provider = provider
         self.model = model
         self.endpoint = endpoint.rstrip("/")
         self.timeout = timeout
         self.headers = dict(headers or {})
+        self.extra_body = dict(extra_body or {})
+        self.max_retries = max(max_retries, 0)
+        self.retry_base_seconds = max(retry_base_seconds, 0.1)
         if api_key:
             self.headers["Authorization"] = f"Bearer {api_key}"
 
-    def summarize(self, transcript: str, video_title: str) -> str:
-        resp = httpx.post(
-            self.endpoint,
-            headers=self.headers,
-            json={
-                "model": self.model,
-                "max_tokens": 4096,
-                "messages": [
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": _USER_PROMPT_TEMPLATE.format(
-                            title=video_title, transcript=transcript
-                        ),
-                    },
-                ],
-            },
-            timeout=self.timeout,
+    def _build_payload(self, transcript: str, video_title: str, model: str) -> dict:
+        payload = {
+            "model": model,
+            "max_tokens": 4096,
+            "messages": [
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": _USER_PROMPT_TEMPLATE.format(
+                        title=video_title, transcript=transcript
+                    ),
+                },
+            ],
+        }
+        if self.extra_body:
+            payload.update(self.extra_body)
+        return payload
+
+    def _retry_delay_seconds(self, response: httpx.Response, attempt: int) -> float:
+        retry_after = _parse_retry_after(response.headers.get("retry-after"))
+        if retry_after is not None:
+            return retry_after
+        return self.retry_base_seconds * (2 ** attempt)
+
+    def _build_error(self, response: httpx.Response) -> Exception:
+        detail = _extract_error_detail(response)
+        if self.provider == "deepseek" and response.status_code == 429:
+            message = (
+                f"DeepSeek rate-limited model '{self.model}'. "
+                "Wait and retry, or check your DeepSeek account balance and limits."
+            )
+            if detail:
+                message = f"{message} ({detail})"
+            return ValueError(message)
+        if self.provider == "openrouter" and response.status_code == 429:
+            message = (
+                f"OpenRouter rate-limited model '{self.model}'. "
+                "Wait and retry, switch to another OpenRouter model, or check your "
+                "OpenRouter account limits."
+            )
+            if detail:
+                message = f"{message} ({detail})"
+            return ValueError(message)
+
+        message = (
+            f"{self.provider} returned HTTP {response.status_code} for model '{self.model}'"
         )
-        resp.raise_for_status()
-        return _extract_chat_completion_text(resp.json())
+        if detail:
+            message = f"{message}: {detail}"
+        return httpx.HTTPStatusError(
+            message,
+            request=response.request,
+            response=response,
+        )
+
+    def _summarize_with_model(
+        self, transcript: str, video_title: str, model: str
+    ) -> str:
+        payload = self._build_payload(transcript, video_title, model)
+        for attempt in range(self.max_retries + 1):
+            resp = httpx.post(
+                self.endpoint,
+                headers=self.headers,
+                json=payload,
+                timeout=self.timeout,
+            )
+            if resp.is_success:
+                self.model = model
+                return _extract_chat_completion_text(resp.json())
+
+            should_retry = resp.status_code in {429, 500, 502, 503, 504}
+            if should_retry and attempt < self.max_retries:
+                delay = self._retry_delay_seconds(resp, attempt)
+                logger.warning(
+                    "%s model '%s' returned HTTP %s; retrying in %.1fs (attempt %d/%d)",
+                    self.provider,
+                    model,
+                    resp.status_code,
+                    delay,
+                    attempt + 1,
+                    self.max_retries,
+                )
+                time.sleep(delay)
+                continue
+
+            self.model = model
+            raise self._build_error(resp)
+
+        raise RuntimeError("Unreachable summarizer retry state")
+
+    def summarize(self, transcript: str, video_title: str) -> str:
+        return self._summarize_with_model(transcript, video_title, self.model)
 
 
 class ClaudeSummarizer(Summarizer):
@@ -150,17 +273,68 @@ class GeminiSummarizer(Summarizer):
         return response.text
 
 
+class DeepSeekSummarizer(ChatCompletionsSummarizer):
+    def __init__(self):
+        self.thinking_enabled = settings.deepseek_thinking
+        super().__init__(
+            provider="deepseek",
+            model=settings.deepseek_model,
+            endpoint="https://api.deepseek.com/chat/completions",
+            timeout=120,
+            api_key=_require_setting(
+                settings.deepseek_api_key, "DEEPSEEK_API_KEY", "deepseek"
+            ),
+            extra_body={
+                "thinking": {
+                    "type": "enabled" if self.thinking_enabled else "disabled"
+                }
+            },
+        )
+
+
 class OpenRouterSummarizer(ChatCompletionsSummarizer):
     def __init__(self):
+        models = _parse_model_list(
+            ",".join(
+                [
+                    settings.openrouter_model,
+                    settings.openrouter_fallback_models,
+                ]
+            )
+        )
+        if not models:
+            raise ValueError("OPENROUTER_MODEL must not be empty when SUMMARIZER=openrouter")
+        self.models = models
         super().__init__(
             provider="openrouter",
-            model=settings.openrouter_model,
+            model=models[0],
             endpoint="https://openrouter.ai/api/v1/chat/completions",
             timeout=120,
             api_key=_require_setting(
                 settings.openrouter_api_key, "OPENROUTER_API_KEY", "openrouter"
             ),
+            max_retries=settings.openrouter_max_retries,
+            retry_base_seconds=settings.openrouter_retry_base_seconds,
         )
+
+    def summarize(self, transcript: str, video_title: str) -> str:
+        errors: list[str] = []
+        for idx, model in enumerate(self.models):
+            try:
+                return self._summarize_with_model(transcript, video_title, model)
+            except Exception as exc:
+                errors.append(f"{model}: {exc}")
+                if idx == len(self.models) - 1:
+                    break
+                next_model = self.models[idx + 1]
+                logger.warning(
+                    "OpenRouter model '%s' failed: %s; trying fallback model '%s'",
+                    model,
+                    exc,
+                    next_model,
+                )
+
+        raise ValueError("All configured OpenRouter models failed: " + "; ".join(errors))
 
 
 class OllamaSummarizer(ChatCompletionsSummarizer):
@@ -203,6 +377,7 @@ class FallbackSummarizer(Summarizer):
 
 
 _SUMMARIZER_MAP = {
+    "deepseek": DeepSeekSummarizer,
     "openrouter": OpenRouterSummarizer,
     "ollama": OllamaSummarizer,
     "claude": ClaudeSummarizer,
@@ -217,6 +392,41 @@ def _build_summarizer(name: str) -> Summarizer:
     if summarizer_cls is None:
         raise ValueError(f"Unsupported summarizer '{name}'")
     return summarizer_cls()
+
+
+def configured_summarizer_model(name: str | None = None) -> str:
+    summarizer_name = name or settings.summarizer
+    models = {
+        "deepseek": settings.deepseek_model,
+        "openrouter": settings.openrouter_model,
+        "ollama": settings.ollama_model,
+        "claude": settings.anthropic_model,
+        "gemini": settings.gemini_model,
+    }
+    return models.get(summarizer_name, "")
+
+
+def format_summarizer_label(
+    provider: str,
+    model: str,
+    thinking_enabled: bool | None = None,
+) -> str:
+    label = model or provider
+    if provider == "deepseek":
+        enabled = settings.deepseek_thinking if thinking_enabled is None else thinking_enabled
+        mode = "thinking" if enabled else "non-thinking"
+        return f"{label} ({mode})"
+    return label
+
+
+def configured_summarizer_label(name: str | None = None) -> str:
+    summarizer_name = name or settings.summarizer
+    thinking_enabled = settings.deepseek_thinking if summarizer_name == "deepseek" else None
+    return format_summarizer_label(
+        summarizer_name,
+        configured_summarizer_model(summarizer_name),
+        thinking_enabled=thinking_enabled,
+    )
 
 
 def get_summarizer() -> Summarizer:

@@ -19,6 +19,19 @@ class JobStatus(str, Enum):
 
 
 @dataclass
+class CachedTranscript:
+    video_id: str
+    url: str
+    metadata: VideoMetadata
+    whisper_model: str
+    transcript_text: str
+    transcript_segments: list[TranscriptSegment] = field(default_factory=list)
+    transcript_language: str = ""
+    transcribe_time: float = 0.0
+    created_at: float = field(default_factory=time.time)
+
+
+@dataclass
 class Job:
     url: str
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])

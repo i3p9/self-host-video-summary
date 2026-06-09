@@ -16,6 +16,7 @@ from app.config import settings
 from app.models import Job, JobStatus, jobs, create_job, get_job
 from app.services import youtube
 from app.pipeline import process_job
+from app.services.summarizer import configured_summarizer_label
 from app import storage
 
 logging.basicConfig(level=logging.INFO)
@@ -45,6 +46,7 @@ _banned_ips: set[str] = set()
 
 def _remote_summarizer_status(name: str) -> tuple[str, str] | None:
     providers = {
+        "deepseek": ("DEEPSEEK_API_KEY", configured_summarizer_label("deepseek")),
         "openrouter": ("OPENROUTER_API_KEY", settings.openrouter_model),
         "claude": ("ANTHROPIC_API_KEY", settings.anthropic_model),
         "gemini": ("GOOGLE_API_KEY", settings.gemini_model),
@@ -54,6 +56,7 @@ def _remote_summarizer_status(name: str) -> tuple[str, str] | None:
 
 def _remote_summarizer_api_key(name: str) -> str:
     api_keys = {
+        "deepseek": settings.deepseek_api_key,
         "openrouter": settings.openrouter_api_key,
         "claude": settings.anthropic_api_key,
         "gemini": settings.google_api_key,
@@ -294,6 +297,29 @@ async def api_create_job(request: Request, url: str = Form(...)):
         job.status = JobStatus.FETCHING_METADATA
         metadata = await asyncio.to_thread(youtube.fetch_metadata, url)
         job.metadata = metadata
+
+        reusable_job = await asyncio.to_thread(
+            storage.find_reusable_job,
+            metadata.video_id,
+            settings.whisper_model,
+            configured_summarizer_label(),
+        )
+        if reusable_job:
+            jobs.pop(job.id, None)
+            return RedirectResponse(url=f"/result/{reusable_job.id}", status_code=303)
+
+        cached_transcript = await asyncio.to_thread(
+            storage.load_transcript_cache,
+            metadata.video_id,
+            settings.whisper_model,
+        )
+        if cached_transcript:
+            job.transcript_text = cached_transcript.transcript_text
+            job.transcript_segments = cached_transcript.transcript_segments
+            job.transcript_language = cached_transcript.transcript_language
+            job.whisper_model = cached_transcript.whisper_model
+            job.stage_detail = "Using cached transcript..."
+
         job.status = JobStatus.CONFIRMED
     except Exception as e:
         job.status = JobStatus.FAILED
