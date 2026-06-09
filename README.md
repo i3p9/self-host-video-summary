@@ -90,6 +90,22 @@ docker compose up -d --build
 
 The repo ignores `secrets/`, and Docker excludes it from the build context, so the cookie file is mounted at runtime and not baked into the image.
 
+## YouTube JS Challenges
+
+Modern YouTube extraction also requires `yt-dlp`'s EJS companion scripts plus an external JavaScript runtime. This repo now installs both inside the app container:
+
+- `yt-dlp[default]`, which includes `yt-dlp-ejs`
+- `deno`, which `yt-dlp` recommends as the runtime for YouTube challenge solving
+
+After pulling these changes, rebuild the app image:
+
+```bash
+docker compose up -d --build
+docker compose exec app sh -lc 'deno --version && python -m yt_dlp --version'
+```
+
+If you are debugging outside the app container on the VM host, host-level `yt-dlp` and `deno` are separate from the container runtime. The app only uses what is installed inside the container.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and adjust as needed.

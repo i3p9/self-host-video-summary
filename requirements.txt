@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 jinja2
 python-multipart
-yt-dlp
+yt-dlp[default]
 faster-whisper
 anthropic
 google-generativeai
