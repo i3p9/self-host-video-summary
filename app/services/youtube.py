@@ -102,7 +102,10 @@ def fetch_metadata(url: str) -> VideoMetadata:
         raise ValueError("Invalid YouTube URL")
 
     try:
-        with _ydlp_opts({"skip_download": True}) as opts:
+        with _ydlp_opts({
+            "skip_download": True,
+            "ignore_no_formats_error": True,
+        }) as opts:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
     except DownloadError as exc:
