@@ -67,19 +67,13 @@ async def process_job(job: Job) -> None:
         job.stage_detail = "Generating summary..."
 
         summarizer = get_summarizer()
-        # Record which model actually ran
-        actual = getattr(summarizer, "fallback", None) or summarizer
-        if hasattr(actual, "model"):
-            job.summarizer_model = actual.model
-        else:
-            job.summarizer_model = settings.summarizer
-
         title = job.metadata.title if job.metadata else "Unknown"
         t0 = time.monotonic()
         job.summary = await asyncio.to_thread(
             summarizer.summarize, job.transcript_text, title
         )
         job.summarize_time = time.monotonic() - t0
+        job.summarizer_model = getattr(summarizer, "model", "") or settings.summarizer
         job.progress = 100
         job.stage_detail = "Summary complete"
 

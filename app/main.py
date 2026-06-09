@@ -43,6 +43,24 @@ _login_failures: dict[str, int] = defaultdict(int)
 _banned_ips: set[str] = set()
 
 
+def _remote_summarizer_status(name: str) -> tuple[str, str] | None:
+    providers = {
+        "openrouter": ("OPENROUTER_API_KEY", settings.openrouter_model),
+        "claude": ("ANTHROPIC_API_KEY", settings.anthropic_model),
+        "gemini": ("GOOGLE_API_KEY", settings.gemini_model),
+    }
+    return providers.get(name)
+
+
+def _remote_summarizer_api_key(name: str) -> str:
+    api_keys = {
+        "openrouter": settings.openrouter_api_key,
+        "claude": settings.anthropic_api_key,
+        "gemini": settings.google_api_key,
+    }
+    return api_keys.get(name, "")
+
+
 def _is_banned(ip: str) -> bool:
     return ip in _banned_ips
 
@@ -138,12 +156,14 @@ async def login_submit(request: Request, username: str = Form(...), password: st
         _AUTH_COOKIE,
         _make_token(password),
         httponly=True,
+        secure=settings.cookie_secure,
         samesite="strict",
         max_age=86400 * 30,
     )
     response.set_cookie(
         _USER_COOKIE,
         username.strip(),
+        secure=settings.cookie_secure,
         samesite="strict",
         max_age=86400 * 30,
     )
@@ -166,7 +186,24 @@ async def index(request: Request):
 @app.get("/api/status")
 async def api_status():
     if settings.summarizer != "ollama":
-        return JSONResponse({"ok": True, "summarizer": settings.summarizer})
+        provider = _remote_summarizer_status(settings.summarizer)
+        if provider is None:
+            return JSONResponse(
+                {"ok": False, "error": f"Unsupported summarizer '{settings.summarizer}'."},
+                status_code=503,
+            )
+        env_var, model = provider
+        if not _remote_summarizer_api_key(settings.summarizer):
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": f"{env_var} is missing for summarizer '{settings.summarizer}'.",
+                },
+                status_code=503,
+            )
+        return JSONResponse(
+            {"ok": True, "summarizer": settings.summarizer, "model": model}
+        )
 
     try:
         async with httpx.AsyncClient() as client:
@@ -184,7 +221,13 @@ async def api_status():
         if model_ready:
             return JSONResponse({"ok": True, "model": model})
         return JSONResponse(
-            {"ok": False, "error": f"Model '{model}' not pulled. Run: docker compose exec ollama ollama pull {model}"},
+            {
+                "ok": False,
+                "error": (
+                    f"Model '{model}' not pulled. Run: "
+                    f"docker compose --profile local-llm exec ollama ollama pull {model}"
+                ),
+            },
             status_code=503,
         )
     except httpx.ConnectError:

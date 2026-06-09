@@ -2,23 +2,25 @@ services:
   app:
     build: .
     ports:
-      - "6999:6999"
+      - "${BIND_HOST:-127.0.0.1}:${HOST_PORT:-6999}:6999"
     volumes:
       - app_data:/app/data
+      - whisper_cache:/root/.cache
     environment:
-      - SUMMARIZER=ollama
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=gemma3:4b
-      - WHISPER_MODEL=base
-      - FALLBACK_SUMMARIZER=
+      SUMMARIZER: ${SUMMARIZER:-openrouter}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-moonshotai/kimi-k2.6:free}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-gemma3:4b}
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      FALLBACK_SUMMARIZER: ${FALLBACK_SUMMARIZER:-}
     env_file:
       - .env
-    depends_on:
-      - ollama
     restart: unless-stopped
 
   ollama:
     image: ollama/ollama
+    profiles:
+      - local-llm
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped
@@ -26,3 +28,4 @@ services:
 volumes:
   app_data:
   ollama_data:
+  whisper_cache:

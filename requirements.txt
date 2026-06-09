@@ -6,6 +6,7 @@ yt-dlp
 faster-whisper
 anthropic
 google-generativeai
+httpx
 python-dotenv
 pydantic-settings
 aiofiles
