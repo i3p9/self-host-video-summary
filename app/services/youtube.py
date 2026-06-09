@@ -1,7 +1,10 @@
+from contextlib import contextmanager
 import os
 import re
 from dataclasses import dataclass
 import logging
+import shutil
+import tempfile
 
 import yt_dlp
 from yt_dlp.utils import DownloadError
@@ -38,23 +41,39 @@ def validate_url(url: str) -> bool:
     return bool(_URL_PATTERN.match(url))
 
 
-def _build_ydlp_opts(extra: dict | None = None) -> dict:
-    opts = {
+def _build_ydlp_base_opts() -> dict:
+    return {
         "quiet": True,
         "no_warnings": True,
     }
 
-    cookie_file = settings.youtube_cookie_file.strip()
-    if cookie_file:
-        if not os.path.isfile(cookie_file):
-            raise ValueError(
-                f"YOUTUBE_COOKIE_FILE does not exist inside the container: {cookie_file}"
-            )
-        opts["cookiefile"] = cookie_file
 
-    if extra:
-        opts.update(extra)
-    return opts
+@contextmanager
+def _ydlp_opts(extra: dict | None = None):
+    opts = _build_ydlp_base_opts()
+    runtime_cookie_file = None
+    cookie_file = settings.youtube_cookie_file.strip()
+    try:
+        if cookie_file:
+            if not os.path.isfile(cookie_file):
+                raise ValueError(
+                    f"YOUTUBE_COOKIE_FILE does not exist inside the container: {cookie_file}"
+                )
+            fd, runtime_cookie_file = tempfile.mkstemp(prefix="yt-cookies-", suffix=".txt")
+            os.close(fd)
+            shutil.copyfile(cookie_file, runtime_cookie_file)
+            os.chmod(runtime_cookie_file, 0o600)
+            opts["cookiefile"] = runtime_cookie_file
+
+        if extra:
+            opts.update(extra)
+        yield opts
+    finally:
+        if runtime_cookie_file and os.path.exists(runtime_cookie_file):
+            try:
+                os.remove(runtime_cookie_file)
+            except OSError:
+                logger.warning("Failed to delete temporary cookie file: %s", runtime_cookie_file)
 
 
 def _normalize_yt_error(exc: Exception) -> Exception:
@@ -82,10 +101,10 @@ def fetch_metadata(url: str) -> VideoMetadata:
     if not validate_url(url):
         raise ValueError("Invalid YouTube URL")
 
-    opts = _build_ydlp_opts({"skip_download": True})
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        with _ydlp_opts({"skip_download": True}) as opts:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
     except DownloadError as exc:
         raise _normalize_yt_error(exc) from exc
 
@@ -107,24 +126,24 @@ def download_audio(url: str, output_dir: str) -> str:
     os.makedirs(output_dir, exist_ok=True)
     output_template = os.path.join(output_dir, "%(id)s.%(ext)s")
 
-    opts = _build_ydlp_opts({
-        "format": "bestaudio/best",
-        "outtmpl": output_template,
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "wav",
-            }
-        ],
-        "postprocessor_args": [
-            "-ar", "16000",
-            "-ac", "1",
-        ],
-    })
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            video_id = info["id"]
+        with _ydlp_opts({
+            "format": "bestaudio/best",
+            "outtmpl": output_template,
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "wav",
+                }
+            ],
+            "postprocessor_args": [
+                "-ar", "16000",
+                "-ac", "1",
+            ],
+        }) as opts:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                video_id = info["id"]
     except DownloadError as exc:
         raise _normalize_yt_error(exc) from exc
 
