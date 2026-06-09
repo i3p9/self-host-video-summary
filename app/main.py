@@ -138,7 +138,11 @@ async def _cleanup_loop():
 
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = ""):
-    return templates.TemplateResponse("login.html", {"request": request, "error": error})
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={"request": request, "error": error},
+    )
 
 
 @app.post("/login")
@@ -180,7 +184,11 @@ async def index(request: Request):
         j for j in jobs.values()
         if j.status not in (JobStatus.COMPLETED, JobStatus.FAILED)
     ]
-    return templates.TemplateResponse("index.html", {"request": request, "history": history, "active": active})
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={"request": request, "history": history, "active": active},
+    )
 
 
 @app.get("/api/status")
@@ -264,7 +272,9 @@ async def api_metadata(request: Request, url: str = Form(...)):
             status_code=500,
         )
     return templates.TemplateResponse(
-        "_metadata.html", {"request": request, "meta": metadata, "url": url}
+        request=request,
+        name="_metadata.html",
+        context={"request": request, "meta": metadata, "url": url},
     )
 
 
@@ -305,7 +315,9 @@ async def processing_page(request: Request, job_id: str):
     if job.status == JobStatus.FAILED:
         return RedirectResponse(url=f"/result/{job_id}", status_code=303)
     return templates.TemplateResponse(
-        "processing.html", {"request": request, "job": job}
+        request=request,
+        name="processing.html",
+        context={"request": request, "job": job},
     )
 
 
@@ -357,4 +369,8 @@ async def result_page(request: Request, job_id: str):
         job = await asyncio.to_thread(storage.load_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return templates.TemplateResponse("result.html", {"request": request, "job": job})
+    return templates.TemplateResponse(
+        request=request,
+        name="result.html",
+        context={"request": request, "job": job},
+    )
