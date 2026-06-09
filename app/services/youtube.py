@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 import logging
 import shutil
+import subprocess
 import tempfile
 
 import yt_dlp
@@ -97,6 +98,14 @@ def _normalize_yt_error(exc: Exception) -> Exception:
     return exc
 
 
+def _is_youtube_auth_challenge(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "sign in to confirm you" in message
+        or "--cookies-from-browser or --cookies" in message
+    )
+
+
 def fetch_metadata(url: str) -> VideoMetadata:
     if not validate_url(url):
         raise ValueError("Invalid YouTube URL")
@@ -148,9 +157,88 @@ def download_audio(url: str, output_dir: str) -> str:
                 info = ydl.extract_info(url, download=True)
                 video_id = info["id"]
     except DownloadError as exc:
+        if _is_youtube_auth_challenge(exc):
+            logger.warning(
+                "yt-dlp Python API hit YouTube auth challenge; falling back to CLI"
+            )
+            return _download_audio_with_cli(url, output_dir)
         raise _normalize_yt_error(exc) from exc
 
     wav_path = os.path.join(output_dir, f"{video_id}.wav")
     if not os.path.exists(wav_path):
         raise RuntimeError(f"Audio download failed: {wav_path} not found")
+    return wav_path
+
+
+def _download_audio_with_cli(url: str, output_dir: str) -> str:
+    os.makedirs(output_dir, exist_ok=True)
+    raw_template = os.path.join(output_dir, "source.%(ext)s")
+    wav_path = os.path.join(output_dir, "audio.wav")
+
+    with _ydlp_opts() as opts:
+        cmd = [
+            "python",
+            "-m",
+            "yt_dlp",
+            "--no-warnings",
+            "--no-progress",
+            "-f",
+            "bestaudio/best",
+            "-o",
+            raw_template,
+        ]
+        cookie_file = opts.get("cookiefile")
+        if cookie_file:
+            cmd.extend(["--cookies", cookie_file])
+        cmd.append(url)
+
+        result = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            message = (result.stderr or result.stdout).strip()
+            raise _normalize_yt_error(RuntimeError(message))
+
+    source_candidates = [
+        os.path.join(output_dir, name)
+        for name in os.listdir(output_dir)
+        if os.path.isfile(os.path.join(output_dir, name))
+        and name != os.path.basename(wav_path)
+        and not name.endswith(".part")
+    ]
+    if not source_candidates:
+        raise RuntimeError("yt-dlp CLI download completed but no audio file was found")
+
+    source_path = max(source_candidates, key=os.path.getmtime)
+    ffmpeg_cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        source_path,
+        "-ar",
+        "16000",
+        "-ac",
+        "1",
+        wav_path,
+    ]
+    ffmpeg_result = subprocess.run(
+        ffmpeg_cmd,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if ffmpeg_result.returncode != 0:
+        message = (ffmpeg_result.stderr or ffmpeg_result.stdout).strip()
+        raise RuntimeError(f"ffmpeg audio conversion failed: {message}")
+
+    try:
+        os.remove(source_path)
+    except OSError:
+        logger.warning("Failed to delete temporary source audio: %s", source_path)
+
+    if not os.path.exists(wav_path):
+        raise RuntimeError("ffmpeg completed but WAV output was not created")
     return wav_path
