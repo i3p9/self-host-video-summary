@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     ollama_model: str = "gemma3:4b"
     whisper_model: str = "small"
     whisper_compute_type: str = "int8"
+    youtube_cookie_file: str = ""
     summarizer: str = "openrouter"  # "openrouter", "ollama", "claude", or "gemini"
     fallback_summarizer: str = ""  # fallback if primary fails ("" to disable)
     auth_password: str = ""  # set to enable password gate (leave empty to disable)

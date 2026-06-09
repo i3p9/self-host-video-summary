@@ -1,8 +1,14 @@
 import os
 import re
 from dataclasses import dataclass
+import logging
 
 import yt_dlp
+from yt_dlp.utils import DownloadError
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -32,17 +38,56 @@ def validate_url(url: str) -> bool:
     return bool(_URL_PATTERN.match(url))
 
 
+def _build_ydlp_opts(extra: dict | None = None) -> dict:
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+    }
+
+    cookie_file = settings.youtube_cookie_file.strip()
+    if cookie_file:
+        if not os.path.isfile(cookie_file):
+            raise ValueError(
+                f"YOUTUBE_COOKIE_FILE does not exist inside the container: {cookie_file}"
+            )
+        opts["cookiefile"] = cookie_file
+
+    if extra:
+        opts.update(extra)
+    return opts
+
+
+def _normalize_yt_error(exc: Exception) -> Exception:
+    message = str(exc)
+    lower = message.lower()
+    needs_cookies = (
+        "sign in to confirm you" in lower
+        or "--cookies-from-browser or --cookies" in lower
+    )
+    if needs_cookies:
+        if settings.youtube_cookie_file.strip():
+            return ValueError(
+                "YouTube rejected the configured cookie file. Export a fresh "
+                "cookies.txt, copy it to the VM, and restart the app."
+            )
+        return ValueError(
+            "YouTube requested a logged-in session. Copy a Netscape-format "
+            "cookies.txt file to the server and set YOUTUBE_COOKIE_FILE "
+            "(for example /app/secrets/youtube-cookies.txt)."
+        )
+    return exc
+
+
 def fetch_metadata(url: str) -> VideoMetadata:
     if not validate_url(url):
         raise ValueError("Invalid YouTube URL")
 
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-    }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    opts = _build_ydlp_opts({"skip_download": True})
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except DownloadError as exc:
+        raise _normalize_yt_error(exc) from exc
 
     return VideoMetadata(
         video_id=info["id"],
@@ -62,11 +107,9 @@ def download_audio(url: str, output_dir: str) -> str:
     os.makedirs(output_dir, exist_ok=True)
     output_template = os.path.join(output_dir, "%(id)s.%(ext)s")
 
-    opts = {
+    opts = _build_ydlp_opts({
         "format": "bestaudio/best",
         "outtmpl": output_template,
-        "quiet": True,
-        "no_warnings": True,
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -77,10 +120,13 @@ def download_audio(url: str, output_dir: str) -> str:
             "-ar", "16000",
             "-ac", "1",
         ],
-    }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        video_id = info["id"]
+    })
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            video_id = info["id"]
+    except DownloadError as exc:
+        raise _normalize_yt_error(exc) from exc
 
     wav_path = os.path.join(output_dir, f"{video_id}.wav")
     if not os.path.exists(wav_path):

@@ -24,6 +24,8 @@ OPENROUTER_MODEL=moonshotai/kimi-k2.6:free
 
 For a `4GB` VM, `WHISPER_MODEL=small` is the default target. If memory is tighter than expected, drop to `base` or `tiny`.
 
+If YouTube starts returning `Sign in to confirm you're not a bot`, provide a `cookies.txt` file to `yt-dlp`. This app supports that through `YOUTUBE_COOKIE_FILE`.
+
 ## Deploy on Ubuntu / Hetzner
 
 This repo is ready for a single-user or small shared deployment if you run one app instance, keep it behind a reverse proxy, and use password auth. It is not designed as a multi-worker or clustered service because active jobs live in memory while completed jobs are persisted to SQLite.
@@ -36,6 +38,7 @@ This repo is ready for a single-user or small shared deployment if you run one a
 OPENROUTER_API_KEY=your-key-here
 OPENROUTER_MODEL=moonshotai/kimi-k2.6:free
 WHISPER_MODEL=small
+YOUTUBE_COOKIE_FILE=/app/secrets/youtube-cookies.txt
 AUTH_PASSWORD=use-a-long-random-password
 COOKIE_SECURE=true
 BIND_HOST=127.0.0.1
@@ -63,6 +66,30 @@ your.domain.example {
 
 If you do not want a public domain, the next best option is to keep `BIND_HOST=127.0.0.1` and access the VM through Tailscale or an SSH tunnel.
 
+## YouTube Cookies
+
+If `yt-dlp` gets blocked by YouTube, copy your exported `cookies.txt` file to the VM and mount it into the container through the built-in `./secrets` bind mount:
+
+```bash
+mkdir -p secrets
+scp /path/to/cookies.txt root@your-server:~/self-host-video-summary/secrets/youtube-cookies.txt
+chmod 600 secrets/youtube-cookies.txt
+```
+
+Then set this in `.env`:
+
+```bash
+YOUTUBE_COOKIE_FILE=/app/secrets/youtube-cookies.txt
+```
+
+And restart the app:
+
+```bash
+docker compose up -d --build
+```
+
+The repo ignores `secrets/`, and Docker excludes it from the build context, so the cookie file is mounted at runtime and not baked into the image.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and adjust as needed.
@@ -74,6 +101,7 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `OPENROUTER_MODEL` | `moonshotai/kimi-k2.6:free` | Any OpenRouter model ID |
 | `OLLAMA_MODEL` | `gemma3:4b` | Any model available in Ollama |
 | `WHISPER_MODEL` | `small` | Whisper model size (`tiny`, `base`, `small`, `medium`) |
+| `YOUTUBE_COOKIE_FILE` | _(empty)_ | Path inside the container to a `cookies.txt` file for `yt-dlp` |
 | `FALLBACK_SUMMARIZER` | _(empty)_ | Fallback if primary fails (e.g. `ollama`) |
 | `AUTH_PASSWORD` | _(empty)_ | Password gate for the web UI; set this before exposing the app |
 | `COOKIE_SECURE` | `false` | Set to `true` when serving the app over HTTPS |
