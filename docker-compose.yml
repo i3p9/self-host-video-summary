@@ -7,8 +7,10 @@ services:
       - app_data:/app/data
       - whisper_cache:/root/.cache
       - ./secrets:/app/secrets:ro
+    depends_on:
+      - ollama
     environment:
-      SUMMARIZER: ${SUMMARIZER:-deepseek}
+      SUMMARIZER: ${SUMMARIZER:-ollama}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
       DEEPSEEK_THINKING: ${DEEPSEEK_THINKING:-false}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-moonshotai/kimi-k2.6:free}
@@ -23,8 +25,6 @@ services:
 
   ollama:
     image: ollama/ollama
-    profiles:
-      - local-llm
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped

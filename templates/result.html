@@ -70,17 +70,39 @@
 
     <!-- Summary -->
     <div class="brutal-box-lime bg-black p-6 mb-6">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-lg font-extrabold uppercase text-lime-400">// SUMMARY</h2>
-            <button onclick="copyToClipboard('summary-content', this)" class="brutal-btn bg-lime-400 text-black text-xs font-extrabold px-3 py-1.5 uppercase flex items-center gap-1.5">
+        <div class="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <h2 class="text-lg font-extrabold uppercase text-lime-400">// SUMMARY</h2>
+                <div class="flex items-center gap-2">
+                    <button
+                        type="button"
+                        id="summary-tab-en"
+                        onclick="switchSummary('en')"
+                        class="brutal-btn bg-lime-400 text-black text-xs font-extrabold px-3 py-1.5 uppercase"
+                    >
+                        English
+                    </button>
+                    <button
+                        type="button"
+                        id="summary-tab-bn"
+                        onclick="switchSummary('bn')"
+                        {% if not job.summary_bengali %}disabled{% endif %}
+                        class="border-2 border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs font-extrabold text-zinc-400 transition-colors hover:border-lime-400 hover:text-lime-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        বাংলা
+                    </button>
+                </div>
+            </div>
+            <button id="copy-summary-btn" onclick="copyToClipboard('summary-content', this)" class="brutal-btn bg-lime-400 text-black text-xs font-extrabold px-3 py-1.5 uppercase flex items-center gap-1.5">
                 <span>COPY</span>
             </button>
         </div>
+        {% if not job.summary_bengali %}
+        <div id="summary-translation-status" class="mb-4 text-xs font-bold uppercase text-zinc-500">
+            Bengali translation is not available for this saved result.
+        </div>
+        {% endif %}
         <div class="prose text-zinc-300 leading-relaxed text-sm" id="summary-content"></div>
-        <script>
-            document.getElementById('summary-content').innerHTML =
-                marked.parse({{ job.summary | tojson }});
-        </script>
     </div>
 
     <!-- Transcript -->
@@ -122,6 +144,43 @@
 
 {% block scripts %}
 <script>
+const summaryData = {
+    en: {{ job.summary | tojson }},
+    bn: {{ job.summary_bengali | tojson }},
+};
+
+let activeSummaryLanguage = summaryData.bn ? 'bn' : 'en';
+
+function renderSummary(lang) {
+    activeSummaryLanguage = lang;
+    const content = document.getElementById('summary-content');
+    content.innerHTML = marked.parse(summaryData[lang] || '');
+    updateSummaryTabs();
+}
+
+function updateSummaryTabs() {
+    const enButton = document.getElementById('summary-tab-en');
+    const bnButton = document.getElementById('summary-tab-bn');
+    const isEnglish = activeSummaryLanguage === 'en';
+    const hasBengali = Boolean(summaryData.bn);
+
+    enButton.className = isEnglish
+        ? 'brutal-btn bg-lime-400 text-black text-xs font-extrabold px-3 py-1.5 uppercase'
+        : 'border-2 border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs font-extrabold text-zinc-400 transition-colors hover:border-lime-400 hover:text-lime-400';
+    bnButton.className = !hasBengali || isEnglish
+        ? 'border-2 border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs font-extrabold text-zinc-400 transition-colors hover:border-lime-400 hover:text-lime-400 disabled:cursor-not-allowed disabled:opacity-50'
+        : 'brutal-btn bg-lime-400 text-black text-xs font-extrabold px-3 py-1.5';
+}
+
+async function switchSummary(lang) {
+    if (lang === activeSummaryLanguage) return;
+    if (lang === 'bn' && !summaryData.bn) {
+        return;
+    }
+
+    renderSummary(lang);
+}
+
 function toggleTranscript() {
     const body = document.getElementById('transcript-body');
     const chevron = document.getElementById('transcript-chevron');
@@ -143,5 +202,7 @@ function copyToClipboard(elementId, btn) {
         }, 1500);
     });
 }
+
+renderSummary(activeSummaryLanguage);
 </script>
 {% endblock %}

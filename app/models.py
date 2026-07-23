@@ -43,6 +43,7 @@ class Job:
     transcript_segments: list[TranscriptSegment] = field(default_factory=list)
     transcript_language: str = ""
     summary: str = ""
+    summary_bengali: str = ""
     error: str = ""
     created_at: float = field(default_factory=time.time)
     created_by: str = ""

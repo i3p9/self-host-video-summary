@@ -80,6 +80,18 @@ async def process_job(job: Job) -> None:
         job.summary = await asyncio.to_thread(
             summarizer.summarize, job.transcript_text, title
         )
+        job.progress = 75
+        job.stage_detail = "Translating summary to Bengali..."
+        try:
+            job.summary_bengali = await asyncio.to_thread(
+                summarizer.translate,
+                job.summary,
+                "English",
+                "Bengali",
+            )
+        except Exception:
+            logger.exception("Bengali translation failed for job %s", job.id)
+            job.summary_bengali = ""
         job.summarize_time = time.monotonic() - t0
         job.summarizer_model = format_summarizer_label(
             getattr(summarizer, "provider", settings.summarizer),

@@ -25,6 +25,22 @@ _USER_PROMPT_TEMPLATE = """Video Title: {title}
 Transcript:
 {transcript}"""
 
+_TRANSLATION_SYSTEM_PROMPT = """You are an expert translator. Translate English markdown into natural Bengali.
+
+Rules:
+1. Preserve the markdown structure, headings, bullets, emphasis, and spacing.
+2. Translate the prose into clear Bengali.
+3. Keep names, product names, URLs, and timestamps accurate.
+4. Do not add commentary or wrap the output in code fences.
+
+Return only the Bengali markdown."""
+
+_TRANSLATION_USER_PROMPT_TEMPLATE = """Source Language: {source_language}
+Target Language: {target_language}
+
+Markdown Summary:
+{text}"""
+
 
 def _require_setting(value: str, env_var: str, provider: str) -> str:
     if value:
@@ -105,6 +121,15 @@ class Summarizer(ABC):
     def summarize(self, transcript: str, video_title: str) -> str:
         ...
 
+    @abstractmethod
+    def translate(
+        self,
+        text: str,
+        source_language: str = "English",
+        target_language: str = "Bengali",
+    ) -> str:
+        ...
+
 
 class ChatCompletionsSummarizer(Summarizer):
     def __init__(
@@ -131,19 +156,45 @@ class ChatCompletionsSummarizer(Summarizer):
         if api_key:
             self.headers["Authorization"] = f"Bearer {api_key}"
 
-    def _build_payload(self, transcript: str, video_title: str, model: str) -> dict:
+    def _build_summary_messages(self, transcript: str, video_title: str) -> list[dict[str, str]]:
+        return [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": _USER_PROMPT_TEMPLATE.format(
+                    title=video_title, transcript=transcript
+                ),
+            },
+        ]
+
+    def _build_translation_messages(
+        self,
+        text: str,
+        source_language: str,
+        target_language: str,
+    ) -> list[dict[str, str]]:
+        return [
+            {"role": "system", "content": _TRANSLATION_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": _TRANSLATION_USER_PROMPT_TEMPLATE.format(
+                    source_language=source_language,
+                    target_language=target_language,
+                    text=text,
+                ),
+            },
+        ]
+
+    def _build_payload(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        max_tokens: int = 4096,
+    ) -> dict:
         payload = {
             "model": model,
-            "max_tokens": 4096,
-            "messages": [
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": _USER_PROMPT_TEMPLATE.format(
-                        title=video_title, transcript=transcript
-                    ),
-                },
-            ],
+            "max_tokens": max_tokens,
+            "messages": messages,
         }
         if self.extra_body:
             payload.update(self.extra_body)
@@ -186,10 +237,13 @@ class ChatCompletionsSummarizer(Summarizer):
             response=response,
         )
 
-    def _summarize_with_model(
-        self, transcript: str, video_title: str, model: str
+    def _generate_with_model(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        max_tokens: int = 4096,
     ) -> str:
-        payload = self._build_payload(transcript, video_title, model)
+        payload = self._build_payload(messages, model, max_tokens=max_tokens)
         for attempt in range(self.max_retries + 1):
             resp = httpx.post(
                 self.endpoint,
@@ -222,7 +276,25 @@ class ChatCompletionsSummarizer(Summarizer):
         raise RuntimeError("Unreachable summarizer retry state")
 
     def summarize(self, transcript: str, video_title: str) -> str:
-        return self._summarize_with_model(transcript, video_title, self.model)
+        return self._generate_with_model(
+            self._build_summary_messages(transcript, video_title),
+            self.model,
+        )
+
+    def translate(
+        self,
+        text: str,
+        source_language: str = "English",
+        target_language: str = "Bengali",
+    ) -> str:
+        return self._generate_with_model(
+            self._build_translation_messages(
+                text,
+                source_language=source_language,
+                target_language=target_language,
+            ),
+            self.model,
+        )
 
 
 class ClaudeSummarizer(Summarizer):
@@ -251,6 +323,29 @@ class ClaudeSummarizer(Summarizer):
         )
         return message.content[0].text
 
+    def translate(
+        self,
+        text: str,
+        source_language: str = "English",
+        target_language: str = "Bengali",
+    ) -> str:
+        message = self.client.messages.create(
+            model=self.model,
+            max_tokens=4096,
+            system=_TRANSLATION_SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": _TRANSLATION_USER_PROMPT_TEMPLATE.format(
+                        source_language=source_language,
+                        target_language=target_language,
+                        text=text,
+                    ),
+                }
+            ],
+        )
+        return message.content[0].text
+
 
 class GeminiSummarizer(Summarizer):
     def __init__(self):
@@ -268,6 +363,24 @@ class GeminiSummarizer(Summarizer):
             _SYSTEM_PROMPT
             + "\n\n"
             + _USER_PROMPT_TEMPLATE.format(title=video_title, transcript=transcript)
+        )
+        response = self.client.generate_content(prompt)
+        return response.text
+
+    def translate(
+        self,
+        text: str,
+        source_language: str = "English",
+        target_language: str = "Bengali",
+    ) -> str:
+        prompt = (
+            _TRANSLATION_SYSTEM_PROMPT
+            + "\n\n"
+            + _TRANSLATION_USER_PROMPT_TEMPLATE.format(
+                source_language=source_language,
+                target_language=target_language,
+                text=text,
+            )
         )
         response = self.client.generate_content(prompt)
         return response.text
@@ -318,10 +431,11 @@ class OpenRouterSummarizer(ChatCompletionsSummarizer):
         )
 
     def summarize(self, transcript: str, video_title: str) -> str:
+        messages = self._build_summary_messages(transcript, video_title)
         errors: list[str] = []
         for idx, model in enumerate(self.models):
             try:
-                return self._summarize_with_model(transcript, video_title, model)
+                return self._generate_with_model(messages, model)
             except Exception as exc:
                 errors.append(f"{model}: {exc}")
                 if idx == len(self.models) - 1:
@@ -329,6 +443,35 @@ class OpenRouterSummarizer(ChatCompletionsSummarizer):
                 next_model = self.models[idx + 1]
                 logger.warning(
                     "OpenRouter model '%s' failed: %s; trying fallback model '%s'",
+                    model,
+                    exc,
+                    next_model,
+                )
+
+        raise ValueError("All configured OpenRouter models failed: " + "; ".join(errors))
+
+    def translate(
+        self,
+        text: str,
+        source_language: str = "English",
+        target_language: str = "Bengali",
+    ) -> str:
+        messages = self._build_translation_messages(
+            text,
+            source_language=source_language,
+            target_language=target_language,
+        )
+        errors: list[str] = []
+        for idx, model in enumerate(self.models):
+            try:
+                return self._generate_with_model(messages, model)
+            except Exception as exc:
+                errors.append(f"{model}: {exc}")
+                if idx == len(self.models) - 1:
+                    break
+                next_model = self.models[idx + 1]
+                logger.warning(
+                    "OpenRouter model '%s' failed translation: %s; trying fallback model '%s'",
                     model,
                     exc,
                     next_model,
@@ -370,6 +513,37 @@ class FallbackSummarizer(Summarizer):
                 type(self.primary).__name__, e, type(self.fallback).__name__,
             )
             result = self.fallback.summarize(transcript, video_title)
+            self.last_used = self.fallback
+            self.provider = self.fallback.provider
+            self.model = self.fallback.model
+            return result
+
+    def translate(
+        self,
+        text: str,
+        source_language: str = "English",
+        target_language: str = "Bengali",
+    ) -> str:
+        try:
+            result = self.primary.translate(
+                text,
+                source_language=source_language,
+                target_language=target_language,
+            )
+            self.last_used = self.primary
+            self.provider = self.primary.provider
+            self.model = self.primary.model
+            return result
+        except Exception as e:
+            logger.warning(
+                "Primary summarizer (%s) failed translation: %s — falling back to %s",
+                type(self.primary).__name__, e, type(self.fallback).__name__,
+            )
+            result = self.fallback.translate(
+                text,
+                source_language=source_language,
+                target_language=target_language,
+            )
             self.last_used = self.fallback
             self.provider = self.fallback.provider
             self.model = self.fallback.model

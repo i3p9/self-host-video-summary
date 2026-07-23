@@ -236,7 +236,7 @@ async def api_status():
                 "ok": False,
                 "error": (
                     f"Model '{model}' not pulled. Run: "
-                    f"docker compose --profile local-llm exec ollama ollama pull {model}"
+                    f"docker compose exec ollama ollama pull {model}"
                 ),
             },
             status_code=503,

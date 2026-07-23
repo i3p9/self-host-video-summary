@@ -36,6 +36,7 @@ def init_db():
             transcript_segments TEXT,
             transcript_language TEXT,
             summary TEXT,
+            summary_bengali TEXT DEFAULT '',
             created_at REAL,
             download_time REAL DEFAULT 0,
             transcribe_time REAL DEFAULT 0,
@@ -72,6 +73,7 @@ def init_db():
         "whisper_model": "TEXT DEFAULT ''",
         "summarizer_model": "TEXT DEFAULT ''",
         "created_by": "TEXT DEFAULT ''",
+        "summary_bengali": "TEXT DEFAULT ''",
     }
     for col, typedef in migrations.items():
         if col not in existing:
@@ -143,10 +145,11 @@ def save_job(job: Job):
     conn.execute(
         """INSERT OR REPLACE INTO jobs
            (id, video_id, url, title, channel, thumbnail, duration, upload_date,
-            transcript_text, transcript_segments, transcript_language, summary, created_at,
+            transcript_text, transcript_segments, transcript_language, summary,
+            summary_bengali, created_at,
             download_time, transcribe_time, summarize_time, whisper_model, summarizer_model,
             created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             job.id,
             video_id,
@@ -160,6 +163,7 @@ def save_job(job: Job):
             segments_json,
             job.transcript_language,
             job.summary,
+            job.summary_bengali,
             job.created_at,
             job.download_time,
             job.transcribe_time,
@@ -316,6 +320,7 @@ def _row_to_job(row: sqlite3.Row) -> Job:
         transcript_segments=segments,
         transcript_language=row["transcript_language"],
         summary=row["summary"],
+        summary_bengali=row["summary_bengali"] or "",
         created_at=row["created_at"],
         download_time=row["download_time"] or 0,
         transcribe_time=row["transcribe_time"] or 0,

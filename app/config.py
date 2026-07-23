@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     whisper_model: str = "small"
     whisper_compute_type: str = "int8"
     youtube_cookie_file: str = ""
-    summarizer: str = "deepseek"  # "deepseek", "openrouter", "ollama", "claude", or "gemini"
+    summarizer: str = "ollama"  # "deepseek", "openrouter", "ollama", "claude", or "gemini"
     fallback_summarizer: str = ""  # fallback if primary fails ("" to disable)
     auth_password: str = ""  # set to enable password gate (leave empty to disable)
     cookie_secure: bool = False

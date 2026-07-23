@@ -1,26 +1,28 @@
 # Video Summarize
 
-Self-hosted web app that transcribes YouTube audio locally with Whisper and summarizes it with DeepSeek by default. OpenRouter and Ollama remain available as alternate backends.
+Self-hosted web app that transcribes YouTube audio locally with Whisper and summarizes it with local Ollama by default. Remote providers remain available as optional backends.
 
 ## Quick Start
 
 ```bash
-# Copy config and add your key
+# Copy config
 cp .env.example .env
 
-# Start the app
+# Start the app + Ollama
 docker compose up -d
+
+# Pull the default local model (one-time)
+docker compose exec ollama ollama pull gemma3:4b
 ```
 
 App runs at `http://localhost:6999`
 
-Set at least this in `.env` before starting:
+The default `.env.example` is already set up for local Ollama in Docker Compose. The important values are:
 
 ```bash
-DEEPSEEK_API_KEY=your-key-here
-SUMMARIZER=deepseek
-DEEPSEEK_MODEL=deepseek-v4-flash
-DEEPSEEK_THINKING=false
+SUMMARIZER=ollama
+OLLAMA_BASE_URL=http://ollama:11434
+OLLAMA_MODEL=gemma3:4b
 ```
 
 For a `4GB` VM, `WHISPER_MODEL=small` is the default target. If memory is tighter than expected, drop to `base` or `tiny`.
@@ -28,6 +30,8 @@ For a `4GB` VM, `WHISPER_MODEL=small` is the default target. If memory is tighte
 Completed summaries are persisted to SQLite, Whisper model downloads are cached, and transcripts are now cached by YouTube `video_id + whisper_model`. If a summary attempt fails after transcription, rerunning the same video can skip download/transcription and go straight to the LLM stage.
 
 If the same video was already summarized with the same summarizer configuration, the app reuses the existing completed result instead of creating a duplicate job.
+
+Each English summary is also translated to Bengali during the summarize stage and cached in SQLite with the job, so the Bengali view is ready when the result page loads.
 
 OpenRouter free models can still be used, but they can hit rate limits. This app retries `429` and some `5xx` responses automatically, and it can fail over to additional OpenRouter models if you set `OPENROUTER_FALLBACK_MODELS`.
 
@@ -42,9 +46,9 @@ This repo is ready for a single-user or small shared deployment if you run one a
 3. Copy `.env.example` to `.env` and set at least:
 
 ```bash
-DEEPSEEK_API_KEY=your-key-here
-DEEPSEEK_MODEL=deepseek-v4-flash
-DEEPSEEK_THINKING=false
+SUMMARIZER=ollama
+OLLAMA_BASE_URL=http://ollama:11434
+OLLAMA_MODEL=gemma3:4b
 WHISPER_MODEL=small
 YOUTUBE_COOKIE_FILE=/app/secrets/youtube-cookies.txt
 AUTH_PASSWORD=use-a-long-random-password
@@ -57,6 +61,7 @@ HOST_PORT=6999
 
 ```bash
 docker compose up -d --build
+docker compose exec ollama ollama pull gemma3:4b
 ```
 
 5. Put Caddy in front of it with a config like this:
@@ -120,7 +125,9 @@ Copy `.env.example` to `.env` and adjust as needed.
 
 | Variable | Default | Description |
 |---|---|---|
-| `SUMMARIZER` | `deepseek` | `deepseek`, `openrouter`, `ollama`, `claude`, or `gemini` |
+| `SUMMARIZER` | `ollama` | `deepseek`, `openrouter`, `ollama`, `claude`, or `gemini` |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama base URL. Use `http://ollama:11434` inside Docker Compose |
+| `OLLAMA_MODEL` | `gemma3:4b` | Any model available in Ollama |
 | `DEEPSEEK_API_KEY` | | Required if using DeepSeek |
 | `DEEPSEEK_MODEL` | `deepseek-v4-flash` | DeepSeek model ID |
 | `DEEPSEEK_THINKING` | `false` | Set to `true` to enable DeepSeek thinking mode |
@@ -129,7 +136,6 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `OPENROUTER_FALLBACK_MODELS` | _(empty)_ | Comma-separated OpenRouter model IDs to try if the primary model fails |
 | `OPENROUTER_MAX_RETRIES` | `3` | Automatic retries for `429` and transient `5xx` responses |
 | `OPENROUTER_RETRY_BASE_SECONDS` | `2` | Base delay for exponential backoff when retrying OpenRouter |
-| `OLLAMA_MODEL` | `gemma3:4b` | Any model available in Ollama |
 | `WHISPER_MODEL` | `small` | Whisper model size (`tiny`, `base`, `small`, `medium`) |
 | `YOUTUBE_COOKIE_FILE` | _(empty)_ | Path inside the container to a `cookies.txt` file for `yt-dlp` |
 | `FALLBACK_SUMMARIZER` | _(empty)_ | Fallback provider if the primary summarizer fails (for example `openrouter`) |
@@ -138,26 +144,29 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `ANTHROPIC_MODEL` | `claude-sonnet-4-5-20250929` | Claude model when `SUMMARIZER=claude` |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model when `SUMMARIZER=gemini` |
 
-Using DeepSeek means you can run a paid remote summarizer without local LLM RAM pressure. If you want the app to automatically try more than one OpenRouter model instead, keep your preferred model in `OPENROUTER_MODEL`, put alternates in `OPENROUTER_FALLBACK_MODELS`, and restart the app.
+Using Ollama keeps summarization local and avoids paid API usage. If you want the app to automatically try more than one OpenRouter model instead, keep your preferred model in `OPENROUTER_MODEL`, put alternates in `OPENROUTER_FALLBACK_MODELS`, and restart the app.
 
 `BIND_HOST` and `HOST_PORT` control the Docker port mapping. The default is `127.0.0.1:6999`, which is the safer choice for reverse-proxy deployments.
 
-## Optional Ollama
+## Optional Remote Providers
 
-If you want to run local Ollama instead:
-
-```bash
-docker compose --profile local-llm up -d
-docker compose --profile local-llm exec ollama ollama pull gemma3:4b
-```
-
-Then set this in `.env` and restart the app:
+If you want to switch away from local Ollama:
 
 ```bash
-SUMMARIZER=ollama
-OLLAMA_BASE_URL=http://ollama:11434
-OLLAMA_MODEL=gemma3:4b
+SUMMARIZER=deepseek
+DEEPSEEK_API_KEY=your-key-here
+DEEPSEEK_MODEL=deepseek-v4-flash
 ```
+
+Or:
+
+```bash
+SUMMARIZER=openrouter
+OPENROUTER_API_KEY=your-key-here
+OPENROUTER_MODEL=moonshotai/kimi-k2.6:free
+```
+
+Then restart the app. Claude and Gemini are also available through their respective API keys and model variables.
 
 ## Usage
 
@@ -167,7 +176,8 @@ OLLAMA_MODEL=gemma3:4b
 4. Wait for download → transcription → summary
 5. If the transcript for that video and Whisper model was already cached, the app skips directly to summary
 6. If the exact same video was already summarized with the same summarizer config, the app reuses the existing result
-7. View the summary and full timestamped transcript
+7. The result page opens in `বাংলা` by default, with an `English` toggle available for the original summary.
+8. View the full timestamped transcript
 
 ## Managing
 
@@ -184,13 +194,13 @@ docker compose restart
 # Stop
 docker compose down
 
-# Switch DeepSeek model
-# Edit DEEPSEEK_MODEL or DEEPSEEK_THINKING in .env and restart app
+# Switch Ollama model
+docker compose exec ollama ollama pull qwen3:4b
+# Then update OLLAMA_MODEL in .env and restart app
 
 # Add automatic OpenRouter model failover
 # Set OPENROUTER_FALLBACK_MODELS=model-a,model-b in .env and restart app
 
-# Switch Ollama model
-docker compose --profile local-llm exec ollama ollama pull qwen3:4b
-# Then update OLLAMA_MODEL in .env and restart app
+# Switch to DeepSeek
+# Set SUMMARIZER=deepseek and DEEPSEEK_API_KEY in .env, then restart app
 ```
